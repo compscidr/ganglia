@@ -60,7 +60,26 @@ Ganglia is designed to run on everything from a Raspberry Pi to a GPU workstatio
 
 See [docs/HARDWARE_TIERS.md](docs/HARDWARE_TIERS.md) for full specifications.
 
-## Quick Start
+## Installation
+
+### Prerequisites
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install -y portaudio19-dev python3-pyaudio ffmpeg
+```
+
+**macOS:**
+```bash
+brew install portaudio ffmpeg
+```
+
+**Windows:**
+- Install [Python 3.10+](https://python.org)
+- PyAudio wheels usually work out of the box
+
+### Quick Start
 
 ```bash
 # Clone the repo
@@ -68,21 +87,60 @@ git clone https://github.com/compscidr/ganglia.git
 cd ganglia
 
 # Create virtual environment
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 
-# Install dependencies
+# Install core dependencies
 pip install -e .
 
+# Install audio dependencies
+pip install sounddevice pyaudio
+
+# Install Whisper for transcription (choose one)
+pip install openai-whisper  # Official OpenAI Whisper
+# OR for faster inference:
+# pip install faster-whisper
+
+# Install VAD dependencies (for Silero VAD)
+pip install torch torchaudio
+
 # List audio devices
-ganglia --list-devices
+python -m ganglia.main --list-devices
 
 # Run the listener (uses default mic, base Whisper model)
-ganglia
+python -m ganglia.main
 
 # Or with options
-ganglia --model tiny --output events.jsonl
+python -m ganglia.main --model tiny --output events.jsonl
 ```
+
+### Clawdbot Integration (Local)
+
+Run Ganglia on the same machine as Clawdbot:
+
+```bash
+python -m ganglia.main \
+  --clawdbot-reactive \
+  --clawdbot-channel discord \
+  --clawdbot-target "channel:YOUR_CHANNEL_ID"
+```
+
+### Clawdbot Integration (Remote via SSH)
+
+Run Ganglia on a sensor machine (e.g., Ubuntu workstation) with Clawdbot on another machine (e.g., Mac):
+
+```bash
+# On the sensor machine
+python -m ganglia.main \
+  --clawdbot-reactive \
+  --clawdbot-channel discord \
+  --clawdbot-target "channel:YOUR_CHANNEL_ID" \
+  --ssh-host user@clawdbot-host.local
+```
+
+**Requirements for remote setup:**
+- SSH key auth configured (no password prompts)
+- Clawdbot installed on the target host
 
 ### Example Output
 
