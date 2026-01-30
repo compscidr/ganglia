@@ -1,0 +1,2 @@
+[console_scripts]
+ganglia = ganglia.main:main
