@@ -99,11 +99,11 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
     """Send notification to Clawdbot agent."""
     # Escape quotes in message
     safe_message = message.replace('"', '\\"').replace("'", "\\'")
-    clawdbot_cmd = f'/opt/homebrew/bin/clawdbot agent --channel {channel} --to "{target}" --message "[Ganglia] {safe_message}" --deliver'
+    clawdbot_cmd = f'clawdbot agent --channel {channel} --to "{target}" --message "[Ganglia] {safe_message}" --deliver'
     
     if ssh_host:
-        # Run via SSH on remote host with login shell
-        cmd = ["ssh", ssh_host, "-t", f"bash -lc '{clawdbot_cmd}'"]
+        # Run via SSH with login shell to get proper PATH
+        cmd = ["ssh", ssh_host, f'bash -lc "{clawdbot_cmd}"']
     else:
         # Run locally
         cmd = ["clawdbot", "agent", "--channel", channel, "--to", target,
