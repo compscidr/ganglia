@@ -144,6 +144,34 @@ Models will be downloaded on first run based on detected tier. Approximate stora
 
 ---
 
+## Experimental: Depth/Stereo Cameras
+
+For users with depth-sensing cameras (Intel RealSense, ZED, OAK-D, stereo rigs):
+
+### Benefits
+- **True distance**: "Person 2m away" not just "person detected"
+- **3D presence**: Volume changes more robust than 2D pixel deltas
+- **Spatial novelty**: Track objects moving through 3D space
+- **Occlusion handling**: Know when something is behind something else
+
+### Supported Hardware (planned)
+| Camera | Interface | Notes |
+|--------|-----------|-------|
+| Intel RealSense D400 series | USB | Well-supported, good SDK |
+| OAK-D | USB | Has onboard NN acceleration |
+| ZED / ZED 2 | USB | Higher quality, pricier |
+| DIY stereo rig | USB | Two webcams + calibration |
+
+### Use Cases
+- Robotics integration
+- Room mapping / occupancy
+- Gesture recognition (future)
+- Fall detection (future)
+
+*This is optional/experimental — standard 2D webcams work fine for most use cases.*
+
+---
+
 ## Future: Distributed Mode
 
 For setups with multiple devices (e.g., RPi sensors + central GPU server):
