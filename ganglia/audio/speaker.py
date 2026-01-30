@@ -91,18 +91,93 @@ class Speaker:
             print(f"⚠️ pyttsx3 error: {e}")
     
     def _speak_say(self, text: str):
-        """Use macOS say command."""
-        cmd = ["say"]
-        if self.voice:
-            cmd.extend(["-v", self.voice])
-        cmd.append(text)
+        """Use macOS say command with audio level feedback for face."""
+        import tempfile
+        import os
+        import wave
+        import struct
+        import time
+        import threading
+        
+        # Generate audio file first
+        temp_file = tempfile.NamedTemporaryFile(suffix='.aiff', delete=False)
+        temp_path = temp_file.name
+        temp_file.close()
+        
+        level_file = Path.home() / ".clawdbot" / "ganglia-audio-level"
         
         try:
+            # Generate speech to file
+            cmd = ["say", "-o", temp_path]
+            if self.voice:
+                cmd.extend(["-v", self.voice])
+            cmd.append(text)
             subprocess.run(cmd, check=True, capture_output=True)
+            
+            # Analyze audio and extract amplitude envelope
+            try:
+                # Convert to wav for easier analysis
+                wav_path = temp_path + ".wav"
+                subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16", temp_path, wav_path], 
+                             capture_output=True)
+                
+                # Read wav and extract amplitudes
+                with wave.open(wav_path, 'rb') as wf:
+                    n_frames = wf.getnframes()
+                    framerate = wf.getframerate()
+                    raw = wf.readframes(n_frames)
+                    samples = struct.unpack(f"<{n_frames}h", raw)
+                    
+                    # Calculate envelope (amplitude every 50ms)
+                    chunk_size = framerate // 20  # 50ms chunks
+                    envelope = []
+                    for i in range(0, len(samples), chunk_size):
+                        chunk = samples[i:i+chunk_size]
+                        if chunk:
+                            level = sum(abs(s) for s in chunk) / len(chunk) / 32768
+                            envelope.append(min(1.0, level * 3))  # Normalize and boost
+                    
+                    duration = n_frames / framerate
+                
+                os.unlink(wav_path)
+                
+                # Play audio while updating level file
+                def update_levels():
+                    start = time.time()
+                    idx = 0
+                    while idx < len(envelope):
+                        elapsed = time.time() - start
+                        idx = int(elapsed * 20)  # 20 updates per second
+                        if idx < len(envelope):
+                            level_file.write_text(str(envelope[idx]))
+                        time.sleep(0.04)
+                    level_file.write_text("0")
+                
+                level_thread = threading.Thread(target=update_levels, daemon=True)
+                level_thread.start()
+                
+                subprocess.run(["afplay", temp_path], check=True, capture_output=True)
+                level_thread.join(timeout=1)
+                
+            except Exception as e:
+                # Fallback to simple playback
+                print(f"⚠️ Audio analysis failed: {e}, using simple playback")
+                subprocess.run(["afplay", temp_path], check=True, capture_output=True)
+                
         except FileNotFoundError:
-            print("⚠️ say command not found (macOS only)")
-        except subprocess.CalledProcessError as e:
+            print("⚠️ say/afplay command not found (macOS only)")
+        except Exception as e:
             print(f"⚠️ say error: {e}")
+        finally:
+            # Clean up
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+            try:
+                level_file.write_text("0")
+            except:
+                pass
     
     def play_file(self, audio_path: str):
         """Play an audio file through speakers."""

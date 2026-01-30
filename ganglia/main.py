@@ -89,6 +89,13 @@ def main():
         help="TTS engine (default: espeak for Linux, say for macOS)"
     )
     
+    # Face visualization
+    parser.add_argument(
+        "--face",
+        action="store_true",
+        help="Show Kai's ocean face visualization (reacts to TTS)"
+    )
+    
     # Output settings
     parser.add_argument(
         "--output", "-o",
@@ -158,6 +165,19 @@ def main():
         speaker_thread.start()
         if not args.quiet:
             print(f"🔊 TTS enabled (engine: {args.tts_engine})")
+    
+    # Initialize face visualization if enabled
+    face_process = None
+    if args.face:
+        import subprocess
+        import sys
+        # Run face in separate process (macOS requires GUI on main thread)
+        face_process = subprocess.Popen(
+            [sys.executable, "-m", "ganglia.face.ocean"],
+            # Don't suppress output so we can see errors
+        )
+        if not args.quiet:
+            print(f"🌊 Face visualization enabled (pid: {face_process.pid})")
     
     # Initialize components
     if not args.quiet:
@@ -238,6 +258,8 @@ def main():
     except KeyboardInterrupt:
         if speaker:
             speaker.stop()
+        if face_process:
+            face_process.terminate()
         if not args.quiet:
             print("\n\n👋 Stopped.")
         return 0

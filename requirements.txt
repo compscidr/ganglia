@@ -14,5 +14,8 @@ faster-whisper>=1.0.0
 # Video capture
 opencv-python>=4.8.0
 
+# Face visualization
+pygame>=2.5.0
+
 # Optional: for resampling if needed
 # librosa>=0.10.0
