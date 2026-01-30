@@ -97,15 +97,24 @@ def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
 
 def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
     """Send notification to Clawdbot agent."""
-    # Escape special characters for shell
-    safe_message = message.replace("'", "'\\''")
+    # Escape special characters
+    safe_message = message.replace('\\', '\\\\').replace('"', '\\"')
     
     if ssh_host:
-        # Build the full SSH command as a single string for shell execution
-        clawdbot_cmd = f"clawdbot agent --channel {channel} --to '{target}' --message '[Ganglia] {safe_message}' --deliver"
-        full_cmd = f"ssh {ssh_host} \"bash -lc '{clawdbot_cmd}'\""
-        print(f"DEBUG: {full_cmd}")
-        result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+        # Write command to temp script and execute via SSH to avoid quoting hell
+        import shlex
+        args = [
+            "clawdbot", "agent",
+            "--channel", channel,
+            "--to", target,
+            "--message", f"[Ganglia] {safe_message}",
+            "--deliver"
+        ]
+        # Use shlex.join for proper escaping, then wrap for bash -lc
+        escaped_cmd = shlex.join(args)
+        full_cmd = ["ssh", ssh_host, f"bash -lc {shlex.quote(escaped_cmd)}"]
+        print(f"DEBUG: {' '.join(full_cmd)}")
+        result = subprocess.run(full_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"Notify failed: {result.stderr or result.stdout}")
         return result.returncode == 0
