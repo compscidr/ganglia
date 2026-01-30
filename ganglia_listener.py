@@ -101,20 +101,23 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
     safe_message = message.replace("'", "'\\''")
     
     if ssh_host:
-        # Run via SSH with login shell to get proper PATH
-        # Use single quotes to prevent any shell expansion
+        # Build the full SSH command as a single string for shell execution
         clawdbot_cmd = f"clawdbot agent --channel {channel} --to '{target}' --message '[Ganglia] {safe_message}' --deliver"
-        cmd = ["ssh", ssh_host, "--", "bash", "-lc", clawdbot_cmd]
+        full_cmd = f"ssh {ssh_host} \"bash -lc '{clawdbot_cmd}'\""
+        print(f"DEBUG: {full_cmd}")
+        result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Notify failed: {result.stderr or result.stdout}")
+        return result.returncode == 0
     else:
         # Run locally
         cmd = ["clawdbot", "agent", "--channel", channel, "--to", target,
                "--message", f"[Ganglia] {message}", "--deliver"]
-    
-    print(f"Notifying: {message[:50]}...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Notify failed: {result.stderr}")
-    return result.returncode == 0
+        print(f"Notifying: {message[:50]}...")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Notify failed: {result.stderr}")
+        return result.returncode == 0
 
 def listen_loop(
     channel: str,
