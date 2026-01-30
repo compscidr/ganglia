@@ -11,5 +11,8 @@ torchaudio>=2.0.0
 # Whisper transcription (faster than openai-whisper)
 faster-whisper>=1.0.0
 
+# Video capture
+opencv-python>=4.8.0
+
 # Optional: for resampling if needed
 # librosa>=0.10.0

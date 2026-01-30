@@ -27,7 +27,17 @@ def is_speaker_active() -> bool:
     """Check if TTS is currently playing (to avoid feedback loops)."""
     from pathlib import Path
     speaking_file = Path.home() / ".clawdbot" / "ganglia-speaking"
-    return speaking_file.exists()
+    if not speaking_file.exists():
+        return False
+    # Safety timeout: if file is older than 30 seconds, assume it's stale
+    try:
+        age = time.time() - speaking_file.stat().st_mtime
+        if age > 30:
+            speaking_file.unlink(missing_ok=True)
+            return False
+    except:
+        pass
+    return True
 
 
 class AudioListener:

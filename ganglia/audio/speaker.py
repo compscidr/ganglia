@@ -143,35 +143,33 @@ class Speaker:
         
         print(f"👂 Watching TTS queue: {self._queue_file}")
         
-        # Track file position
-        last_size = 0
+        # Clear any existing queue on startup (avoid replay)
+        if self._queue_file.exists():
+            self._queue_file.unlink()
         
         while self._running:
             try:
                 if self._queue_file.exists():
-                    current_size = self._queue_file.stat().st_size
+                    # Read and process all entries
+                    with open(self._queue_file, 'r') as f:
+                        lines = f.readlines()
                     
-                    if current_size > last_size:
-                        # New content added
-                        with open(self._queue_file, 'r') as f:
-                            f.seek(last_size)
-                            new_lines = f.readlines()
-                        
-                        for line in new_lines:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                entry = json.loads(line)
-                                if entry.get("type") == "tts":
-                                    self.speak(entry.get("text", ""))
-                                elif entry.get("type") == "audio":
-                                    self.play_file(entry.get("path", ""))
-                            except json.JSONDecodeError:
-                                # Plain text fallback
-                                self.speak(line)
-                        
-                        last_size = current_size
+                    # Clear the file immediately
+                    self._queue_file.unlink()
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            if entry.get("type") == "tts":
+                                self.speak(entry.get("text", ""))
+                            elif entry.get("type") == "audio":
+                                self.play_file(entry.get("path", ""))
+                        except json.JSONDecodeError:
+                            # Plain text fallback
+                            self.speak(line)
                 
                 time.sleep(0.1)  # Check frequently for responsiveness
                 

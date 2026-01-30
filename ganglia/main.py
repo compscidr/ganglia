@@ -36,6 +36,19 @@ def main():
         help="List available audio devices and exit"
     )
     
+    # Video settings
+    parser.add_argument(
+        "--vision",
+        action="store_true",
+        help="Enable vision - capture frame when 'what do you see' is detected"
+    )
+    parser.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        help="Camera device index (default: 0)"
+    )
+    
     # Model settings
     parser.add_argument(
         "--model", "-m",
@@ -181,6 +194,28 @@ def main():
             result = transcriber.transcribe(chunk.audio, chunk.sample_rate)
             
             if result.text.strip():
+                # Check for vision triggers
+                text_lower = result.text.lower()
+                vision_triggers = ["what do you see", "look at", "can you see", "show me what", "take a picture", "take a photo"]
+                should_capture = args.vision and any(t in text_lower for t in vision_triggers)
+                
+                if should_capture:
+                    if not args.quiet:
+                        print(f"   👁️ Vision trigger detected, capturing frame...")
+                    try:
+                        from ganglia.video import capture_frame, describe_frame_clawdbot
+                        frame = capture_frame(device=args.camera)
+                        if frame:
+                            describe_frame_clawdbot(frame, f"The user said: \"{result.text}\". Describe what you see and respond to their request.")
+                            if not args.quiet:
+                                print(f"   📷 Frame sent for analysis")
+                        else:
+                            if not args.quiet:
+                                print(f"   ⚠️ Failed to capture frame")
+                    except Exception as e:
+                        if not args.quiet:
+                            print(f"   ⚠️ Vision error: {e}")
+                
                 # Emit event
                 event = speech_event(
                     text=result.text,
