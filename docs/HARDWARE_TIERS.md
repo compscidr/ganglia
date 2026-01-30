@@ -181,3 +181,43 @@ For setups with multiple devices (e.g., RPi sensors + central GPU server):
 - Best of both worlds: cheap sensors, powerful brain
 
 *Not implemented yet — tracking in issues.*
+
+---
+
+## Future: Motor Control / Actuation
+
+> ⚠️ **Out of scope for v1** — but worth capturing the vision.
+
+If agents can sense, why not act? The natural extension is motor control:
+
+### Potential Actuators
+| Type | Examples | Use Case |
+|------|----------|----------|
+| **Pan/tilt** | Servo-mounted camera | Look at interesting things |
+| **Mobile base** | Wheeled robot, Roomba-style | Move through space |
+| **Robotic arm** | Entry-level arms | Physical manipulation |
+| **Smart home** | Lights, locks, blinds | Environmental control (via APIs) |
+
+### The Vision
+```
+Sense → Reason → Act
+  ↑                ↓
+  └── Feedback ←───┘
+```
+
+- Camera detects person at door → agent reasons "delivery" → unlock door
+- Audio detects baby crying → agent reasons "needs attention" → notify human + turn on light
+- Novelty detected in garage → pan camera to investigate → capture better image
+
+### Why Later
+- Sensing is prerequisite — need reliable triggers before acting
+- Safety considerations — physical actions have real consequences
+- Complexity — motor control is a whole discipline
+
+### Platforms to Consider (future)
+- ROS2 integration for serious robotics
+- Simple PWM/servo control for pan/tilt
+- ESP32/Arduino bridges for DIY actuators
+- Home Assistant for smart home control
+
+*This is the "eventually embodied AI" dream. First we learn to see and hear.*
