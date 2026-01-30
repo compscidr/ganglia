@@ -82,14 +82,30 @@ class ClawdbotIntegration:
         if not text.strip():
             return
         
-        # Build the clawdbot command - simple approach, just trigger agent
+        # Extract channel ID from reply_to (e.g., "channel:1465867928724439043" -> "1465867928724439043")
+        channel_id = None
+        if self.reply_to and self.reply_to.startswith("channel:"):
+            channel_id = self.reply_to.split(":", 1)[1]
+        
+        # Build session ID to route to the existing Discord conversation
+        # Format: agent:main:discord:channel:{channel_id}
+        session_id = None
+        if self.channel == "discord" and channel_id:
+            session_id = f"agent:main:discord:channel:{channel_id}"
+        
+        # Build the clawdbot command
         cmd = [
             "clawdbot", "agent",
-            "--agent", "main",
             "--message", f"🎤 [Voice] {text}",
             "--channel", self.channel,
             "--deliver",
         ]
+        
+        # Use session-id to route to existing conversation, otherwise use agent main
+        if session_id:
+            cmd.extend(["--session-id", session_id])
+        else:
+            cmd.extend(["--agent", "main"])
         
         if self.reply_to:
             cmd.extend(["--reply-to", self.reply_to])
@@ -98,7 +114,8 @@ class ClawdbotIntegration:
             self._run_command(cmd)
             preview = text[:50] + "..." if len(text) > 50 else text
             mode = "ssh" if self.ssh_host else "local"
-            print(f"🎤 Triggered agent ({mode}): \"{preview}\"")
+            routing = f"session:{session_id}" if session_id else "agent:main"
+            print(f"🎤 Triggered agent ({mode}, {routing}): \"{preview}\"")
         except Exception as e:
             print(f"⚠️ Failed: {e}")
     
