@@ -1,0 +1,15 @@
+# Ganglia dependencies
+
+# Audio capture
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Voice Activity Detection (Silero VAD)
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Whisper transcription (faster than openai-whisper)
+faster-whisper>=1.0.0
+
+# Optional: for resampling if needed
+# librosa>=0.10.0

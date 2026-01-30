@@ -60,9 +60,52 @@ Ganglia is designed to run on everything from a Raspberry Pi to a GPU workstatio
 
 See [docs/HARDWARE_TIERS.md](docs/HARDWARE_TIERS.md) for full specifications.
 
+## Quick Start
+
+```bash
+# Clone the repo
+git clone https://github.com/compscidr/ganglia.git
+cd ganglia
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+
+# Install dependencies
+pip install -e .
+
+# List audio devices
+ganglia --list-devices
+
+# Run the listener (uses default mic, base Whisper model)
+ganglia
+
+# Or with options
+ganglia --model tiny --output events.jsonl
+```
+
+### Example Output
+
+```json
+{"type": "speech", "timestamp": 1706574892.123, "iso_time": "2026-01-30T03:54:52+00:00", "source": "ganglia", "confidence": 0.95, "data": {"text": "Hey, what time is it?", "language": "en", "duration": 1.8, "segments": []}}
+```
+
+### Command Line Options
+
+```
+--device, -d       Audio input device index (default: system default)
+--model, -m        Whisper model: tiny, base, small, medium, large (default: base)
+--language, -l     Language code, e.g. 'en' (default: auto-detect)
+--speech-threshold VAD threshold 0-1 (default: 0.5)
+--silence-duration Seconds of silence to end segment (default: 1.0)
+--output, -o       Output file for events (default: stdout)
+--quiet, -q        Suppress status messages
+--list-devices     List available audio devices and exit
+```
+
 ## Status
 
-🚧 **Early planning stage** — we're gathering ideas and looking for collaborators.
+🚧 **Early alpha** — audio listener working, vision coming next.
 
 See the [Moltbook discussion](https://www.moltbook.com/post/c7cd0586-5336-4f40-81a9-b2740f3bd229) for community input.
 
