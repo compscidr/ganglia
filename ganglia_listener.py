@@ -1,7 +1,30 @@
 #!/usr/bin/env python3
 """
 Ganglia Listener - Continuous audio monitoring with VAD and transcription.
-Notifies Clawdbot agent when speech is detected.
+
+Listens for speech, transcribes it using Whisper, and sends to a Clawdbot
+agent session. Supports local and remote (SSH) setups.
+
+## Quick Start
+
+Local (Ganglia and Clawdbot on same machine):
+    python ganglia_listener.py --channel discord --target channel:1234567890
+
+Remote (Ganglia on Ubuntu, Clawdbot on Mac):
+    python ganglia_listener.py --channel discord --target channel:1234567890 \\
+        --ssh-host jason@macbook.local --speaker "Jason"
+
+## Session Discovery
+
+The listener automatically discovers the Clawdbot session ID by querying
+`clawdbot sessions list`. No manual session ID management required.
+
+## Requirements
+
+    pip install pyaudio numpy torch  # torch is optional, enables better VAD
+    
+For whisper transcription, install whisper.cpp:
+    brew install whisper-cpp  # or build from source
 """
 
 import subprocess
@@ -9,7 +32,7 @@ import tempfile
 import wave
 import time
 import argparse
-import json
+import sys
 from pathlib import Path
 
 try:
@@ -17,22 +40,22 @@ try:
     import numpy as np
 except ImportError:
     print("Missing dependencies. Run: pip install pyaudio numpy")
-    exit(1)
+    sys.exit(1)
 
-# Try to import silero VAD
+# Try to import silero VAD (optional, falls back to energy-based)
 try:
     import torch
     torch.set_num_threads(1)
     SILERO_AVAILABLE = True
 except ImportError:
     SILERO_AVAILABLE = False
-    print("Warning: torch not available, using simple energy-based VAD")
 
 # Audio settings
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 512  # 32ms at 16kHz
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
+
 
 class SimpleVAD:
     """Simple energy-based voice activity detection."""
@@ -44,8 +67,9 @@ class SimpleVAD:
         energy = np.sqrt(np.mean(audio ** 2))
         return energy > self.threshold
 
+
 class SileroVAD:
-    """Silero VAD wrapper."""
+    """Silero VAD wrapper - more accurate than energy-based."""
     def __init__(self):
         self.model, self.utils = torch.hub.load(
             repo_or_dir='snakers4/silero-vad',
@@ -60,30 +84,37 @@ class SileroVAD:
         speech_prob = self.model(audio_tensor, SAMPLE_RATE).item()
         return speech_prob > 0.5
 
+
 def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
-    """Transcribe audio file using available method."""
+    """
+    Transcribe audio file using Whisper.
+    
+    Methods:
+        - whisper-cli: whisper.cpp CLI (fastest, recommended)
+        - whisper-python: OpenAI whisper Python package
+        - shell: Generic whisper command
+    """
     if method == "whisper-cli":
-        # Try whisper.cpp CLI
+        # whisper.cpp CLI
+        import os
+        model_path = os.environ.get("WHISPER_MODEL", "/usr/local/share/whisper/ggml-base.en.bin")
         result = subprocess.run(
-            ["whisper-cli", "-m", "${WHISPER_MODEL:-/usr/local/share/whisper/ggml-base.en.bin}", 
-             "-f", audio_path, "--no-timestamps", "-nt"],
+            ["whisper-cli", "-m", model_path, "-f", audio_path, "--no-timestamps", "-nt"],
             capture_output=True, text=True
         )
         if result.returncode == 0:
             return result.stdout.strip()
     
     elif method == "whisper-python":
-        # Try Python whisper
         try:
             import whisper
             model = whisper.load_model("base.en")
             result = model.transcribe(audio_path)
             return result["text"].strip()
         except ImportError:
-            pass
+            print("whisper-python not installed. Run: pip install openai-whisper")
     
     elif method == "shell":
-        # Fallback: use any whisper in PATH
         result = subprocess.run(
             ["whisper", audio_path, "--model", "base.en", "--output_format", "txt"],
             capture_output=True, text=True
@@ -95,63 +126,12 @@ def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
     
     return ""
 
-def notify_agent(message: str, channel: str, target: str, ssh_host: str = None, webhook_url: str = None, bot_id: str = None):
-    """Send notification to Clawdbot agent via webhook or clawdbot CLI."""
-    import requests as req
-    
-    if webhook_url:
-        # Use webhook directly - works for both local and remote
-        print(f"Notifying via webhook: {message[:50]}...")
-        # Include bot mention to trigger response if bot_id provided
-        content = f"[Ganglia] {message}"
-        if bot_id:
-            content = f"<@{bot_id}> {content}"
-        try:
-            resp = req.post(webhook_url, json={
-                "content": content,
-                "username": "Ganglia 🎤"
-            })
-            if resp.status_code not in (200, 204):
-                print(f"Webhook failed: {resp.status_code} {resp.text}")
-                return False
-            return True
-        except Exception as e:
-            print(f"Webhook error: {e}")
-            return False
-    
-    # Fallback to clawdbot CLI
-    safe_message = message.replace('\\', '\\\\').replace('"', '\\"')
-    
-    if ssh_host:
-        import shlex
-        args = [
-            "clawdbot", "message", "send",
-            "--channel", channel,
-            "--target", target,
-            "--message", f"[Ganglia] {safe_message}"
-        ]
-        escaped_cmd = shlex.join(args)
-        full_cmd = ["ssh", ssh_host, f"bash -lc {shlex.quote(escaped_cmd)}"]
-        print(f"DEBUG: {' '.join(full_cmd)}")
-        result = subprocess.run(full_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Notify failed: {result.stderr or result.stdout}")
-        return result.returncode == 0
-    else:
-        # Run locally
-        cmd = ["clawdbot", "message", "send", "--channel", channel, "--target", target,
-               "--message", f"[Ganglia] {message}"]
-        print(f"Notifying: {message[:50]}...")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Notify failed: {result.stderr}")
-        return result.returncode == 0
 
 def listen_loop(
     channel: str,
     target: str,
     ssh_host: str = None,
-    webhook_url: str = None,
+    speaker: str = None,
     vad_type: str = "auto",
     transcribe_method: str = "whisper-cli",
     silence_threshold: float = 1.5,
@@ -159,17 +139,48 @@ def listen_loop(
     max_speech_duration: float = 30.0,
     cooldown: float = 2.0
 ):
-    """Main listening loop with VAD."""
+    """
+    Main listening loop with VAD.
+    
+    Continuously listens for speech, transcribes when detected, and sends
+    to the configured Clawdbot session.
+    """
+    # Import integration here to avoid import errors if dependencies missing
+    from ganglia.integrations.clawdbot import ClawdbotIntegration
+    
+    # Initialize Clawdbot integration
+    speaker_label = f'{speaker} said:' if speaker else None
+    integration = ClawdbotIntegration(
+        channel=channel,
+        target=target,
+        ssh_host=ssh_host,
+        reactive=True,
+        speaker_label=speaker_label,
+    )
+    
+    # Pre-discover session ID so we fail early if something's wrong
+    print("🔍 Discovering Clawdbot session...")
+    session_id = integration.get_session_id()
+    if not session_id:
+        print("❌ Failed to discover session. Check that:")
+        print(f"   - Clawdbot is running with channel={channel}")
+        print(f"   - A session exists for target={target}")
+        if ssh_host:
+            print(f"   - SSH to {ssh_host} works")
+        sys.exit(1)
     
     # Initialize VAD
     if vad_type == "auto":
         if SILERO_AVAILABLE:
-            print("Using Silero VAD")
+            print("🎯 Using Silero VAD (neural network)")
             vad = SileroVAD()
         else:
-            print("Using simple energy-based VAD")
+            print("🎯 Using energy-based VAD (install torch for better accuracy)")
             vad = SimpleVAD()
     elif vad_type == "silero":
+        if not SILERO_AVAILABLE:
+            print("❌ Silero VAD requires torch. Run: pip install torch")
+            sys.exit(1)
         vad = SileroVAD()
     else:
         vad = SimpleVAD()
@@ -187,8 +198,9 @@ def listen_loop(
     print(f"\n🎤 Ganglia listening...")
     print(f"   Channel: {channel}")
     print(f"   Target: {target}")
-    print(f"   Webhook: {'yes' if webhook_url else 'no'}")
     print(f"   SSH Host: {ssh_host or 'local'}")
+    print(f"   Speaker: {speaker or '(anonymous)'}")
+    print(f"   Session: {session_id[:20]}...")
     print(f"   Press Ctrl+C to stop\n")
     
     recording = False
@@ -238,10 +250,11 @@ def listen_loop(
                     
                     # Check cooldown
                     if time.time() - last_notify_time < cooldown:
-                        print("⏳ Cooldown, ignoring")
+                        print("⏳ Cooldown active, ignoring")
                         continue
                     
-                    print(f"⬜ Speech ended ({speech_chunks * CHUNK_SIZE / SAMPLE_RATE:.1f}s), transcribing...")
+                    duration = speech_chunks * CHUNK_SIZE / SAMPLE_RATE
+                    print(f"⬜ Speech ended ({duration:.1f}s), transcribing...")
                     
                     # Save audio to temp file
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -256,8 +269,19 @@ def listen_loop(
                         transcript = transcribe_audio(f.name, transcribe_method)
                         
                         if transcript:
-                            print(f"📝 Transcript: {transcript}")
-                            notify_agent(f"Speech: {transcript}", channel, target, ssh_host, webhook_url)
+                            print(f"📝 \"{transcript}\"")
+                            
+                            # Create event and send to Clawdbot
+                            from ganglia.events import Event, EventType
+                            event = Event(
+                                type=EventType.SPEECH,
+                                data={
+                                    "text": transcript,
+                                    "duration": duration,
+                                    "language": "en",
+                                }
+                            )
+                            integration.handle_event(event)
                             last_notify_time = time.time()
                         else:
                             print("❌ Transcription failed or empty")
@@ -272,23 +296,63 @@ def listen_loop(
         stream.close()
         pa.terminate()
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Ganglia - Continuous audio monitoring for Clawdbot")
-    parser.add_argument("--channel", default="discord", help="Clawdbot channel (discord, telegram, etc.)")
-    parser.add_argument("--target", default="", help="Channel/chat target ID (not needed with webhook)")
-    parser.add_argument("--webhook-url", help="Discord webhook URL (preferred method)")
-    parser.add_argument("--ssh-host", help="SSH host where clawdbot runs (e.g., macbook.local)")
-    parser.add_argument("--vad", choices=["auto", "silero", "simple"], default="auto", help="VAD method")
-    parser.add_argument("--transcribe", choices=["whisper-cli", "whisper-python", "shell"], 
-                        default="whisper-cli", help="Transcription method")
-    parser.add_argument("--silence-threshold", type=float, default=1.5, 
-                        help="Seconds of silence to end recording")
+    parser = argparse.ArgumentParser(
+        description="Ganglia - Voice-to-agent bridge for Clawdbot",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Local setup (Ganglia and Clawdbot on same machine)
+  %(prog)s --channel discord --target channel:1234567890
+
+  # Remote setup (Ganglia on Ubuntu, Clawdbot on Mac)
+  %(prog)s --channel discord --target channel:1234567890 \\
+      --ssh-host jason@macbook.local --speaker "Jason"
+
+  # Telegram instead of Discord
+  %(prog)s --channel telegram --target chat:1234567890
+
+Session Discovery:
+  The listener automatically discovers the Clawdbot session UUID by
+  querying `clawdbot sessions list`. The session ID is cached in
+  ~/.clawdbot/ganglia-session-id (on the Clawdbot host).
+  
+  If the session changes (e.g., after Clawdbot restart), it will be
+  re-discovered automatically on the next speech event.
+"""
+    )
+    
+    # Required arguments
+    parser.add_argument("--channel", default="discord",
+                        help="Clawdbot channel type (discord, telegram, signal, etc.)")
+    parser.add_argument("--target", required=True,
+                        help="Target within channel (e.g., channel:1234567890 for Discord)")
+    
+    # Remote setup
+    parser.add_argument("--ssh-host",
+                        help="SSH host where Clawdbot runs (e.g., user@macbook.local)")
+    parser.add_argument("--speaker",
+                        help="Speaker name for attribution (e.g., 'Jason')")
+    
+    # VAD options
+    parser.add_argument("--vad", choices=["auto", "silero", "simple"], default="auto",
+                        help="VAD method: auto (best available), silero (neural), simple (energy)")
+    
+    # Transcription options
+    parser.add_argument("--transcribe", choices=["whisper-cli", "whisper-python", "shell"],
+                        default="whisper-cli",
+                        help="Transcription method")
+    
+    # Timing options
+    parser.add_argument("--silence-threshold", type=float, default=1.5,
+                        help="Seconds of silence to end recording (default: 1.5)")
     parser.add_argument("--min-duration", type=float, default=0.5,
-                        help="Minimum speech duration to process")
+                        help="Minimum speech duration to process (default: 0.5)")
     parser.add_argument("--max-duration", type=float, default=30.0,
-                        help="Maximum speech duration")
+                        help="Maximum speech duration (default: 30.0)")
     parser.add_argument("--cooldown", type=float, default=2.0,
-                        help="Cooldown between notifications")
+                        help="Cooldown between notifications (default: 2.0)")
     
     args = parser.parse_args()
     
@@ -296,7 +360,7 @@ def main():
         channel=args.channel,
         target=args.target,
         ssh_host=args.ssh_host,
-        webhook_url=args.webhook_url,
+        speaker=args.speaker,
         vad_type=args.vad,
         transcribe_method=args.transcribe,
         silence_threshold=args.silence_threshold,
@@ -304,6 +368,7 @@ def main():
         max_speech_duration=args.max_duration,
         cooldown=args.cooldown
     )
+
 
 if __name__ == "__main__":
     main()
