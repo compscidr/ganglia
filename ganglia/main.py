@@ -13,6 +13,7 @@ from typing import Optional
 from ganglia.audio.listener import AudioListener, list_devices
 from ganglia.audio.transcribe import Transcriber
 from ganglia.events import EventEmitter, speech_event
+from ganglia.integrations.clawdbot import create_clawdbot_handler
 
 
 def main():
@@ -67,6 +68,11 @@ def main():
         help="Output file for events (default: stdout)"
     )
     parser.add_argument(
+        "--clawdbot",
+        action="store_true",
+        help="Write events to Clawdbot integration file (~/.clawdbot/ganglia-events.jsonl)"
+    )
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="Suppress status messages, only output events"
@@ -81,11 +87,15 @@ def main():
     
     # Set up event emitter
     emitter = EventEmitter()
+    if args.clawdbot:
+        emitter.add_handler(create_clawdbot_handler())
+        if not args.quiet:
+            print(f"🤖 Writing events to Clawdbot (~/.clawdbot/ganglia-events.jsonl)")
     if args.output:
         emitter.add_file_handler(args.output)
         if not args.quiet:
             print(f"📁 Writing events to: {args.output}")
-    else:
+    if not args.clawdbot and not args.output:
         emitter.add_stdout_handler()
     
     # Initialize components
