@@ -101,10 +101,11 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None, 
     
     if webhook_url:
         # Use webhook directly - works for both local and remote
+        # Include bot mention to trigger response
         print(f"Notifying via webhook: {message[:50]}...")
         try:
             resp = req.post(webhook_url, json={
-                "content": f"[Ganglia] {message}",
+                "content": f"<@1465867378192810197> [Ganglia] {message}",
                 "username": "Ganglia 🎤"
             })
             if resp.status_code not in (200, 204):
