@@ -26,6 +26,8 @@ class ClawdbotIntegration:
     Can either:
     1. Write events to a JSONL file for polling
     2. Directly trigger agent turns via CLI (reactive)
+    
+    Supports SSH for remote sensor setups (e.g., sensors on Ubuntu, Clawdbot on Mac).
     """
     
     def __init__(
@@ -35,15 +37,18 @@ class ClawdbotIntegration:
         reactive: bool = False,
         channel: str = "discord",
         reply_to: Optional[str] = None,  # e.g., "channel:1234567890"
+        ssh_host: Optional[str] = None,  # e.g., "jason@macbook.local"
     ):
         self.events_file = events_file or DEFAULT_EVENTS_FILE
         self.max_events = max_events
         self.reactive = reactive
         self.channel = channel
         self.reply_to = reply_to
+        self.ssh_host = ssh_host
         
-        # Ensure directory exists
-        self.events_file.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure directory exists (only if local)
+        if not ssh_host:
+            self.events_file.parent.mkdir(parents=True, exist_ok=True)
     
     def handle_event(self, event: Event):
         """Handle an event - either write to file or trigger agent."""
@@ -60,6 +65,17 @@ class ClawdbotIntegration:
             f.write(event.to_json() + "\n")
         self._trim_events_file()
     
+    def _run_command(self, cmd: list):
+        """Run a command locally or via SSH."""
+        if self.ssh_host:
+            import shlex
+            # Build command string and run via SSH
+            cmd_str = shlex.join(cmd)
+            ssh_cmd = ["ssh", self.ssh_host, f"bash -lc {shlex.quote(cmd_str)}"]
+            return subprocess.Popen(ssh_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
     def _trigger_agent(self, event: Event):
         """Post transcription visibly AND trigger agent in current session."""
         text = event.data.get("text", "")
@@ -67,14 +83,16 @@ class ClawdbotIntegration:
             return
         
         target = self.reply_to or "channel:1465867928724439043"
-        session_id_file = Path.home() / ".clawdbot" / "ganglia-session-id"
         
         # Read session ID if available (routes to existing conversation)
+        # Only check locally - remote won't have this file
         session_id = None
-        if session_id_file.exists():
-            session_id = session_id_file.read_text().strip()
+        if not self.ssh_host:
+            session_id_file = Path.home() / ".clawdbot" / "ganglia-session-id"
+            if session_id_file.exists():
+                session_id = session_id_file.read_text().strip()
         
-        # Step 1: Post transcription visibly to Discord so user sees what was heard
+        # Step 1: Post transcription visibly so user sees what was heard
         post_cmd = [
             "clawdbot", "message", "send",
             "--channel", self.channel,
@@ -98,12 +116,12 @@ class ClawdbotIntegration:
         
         try:
             # Post visible transcription first
-            subprocess.Popen(post_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._run_command(post_cmd)
             # Then trigger agent
-            subprocess.Popen(agent_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._run_command(agent_cmd)
             
             preview = text[:50] + "..." if len(text) > 50 else text
-            mode = "session" if session_id else "isolated"
+            mode = "ssh" if self.ssh_host else ("session" if session_id else "isolated")
             print(f"🎤 Posted + triggered ({mode}): \"{preview}\"")
         except Exception as e:
             print(f"⚠️ Failed: {e}")
@@ -158,7 +176,8 @@ class ClawdbotIntegration:
 def create_clawdbot_handler(
     reactive: bool = False,
     channel: str = "discord", 
-    reply_to: Optional[str] = None
+    reply_to: Optional[str] = None,
+    ssh_host: Optional[str] = None
 ):
     """
     Create an event handler for Clawdbot.
@@ -167,6 +186,7 @@ def create_clawdbot_handler(
         reactive: If True, trigger agent immediately on speech events
         channel: Delivery channel (discord, telegram, etc.)
         reply_to: Target for replies (e.g., "channel:1234567890")
+        ssh_host: SSH host for remote clawdbot (e.g., "jason@macbook.local")
     
     Usage:
         # Polling mode (write to file)
@@ -178,11 +198,20 @@ def create_clawdbot_handler(
             channel="discord",
             reply_to="channel:1465867928724439043"
         ))
+        
+        # Remote mode (sensors on Ubuntu, Clawdbot on Mac)
+        emitter.add_handler(create_clawdbot_handler(
+            reactive=True,
+            channel="discord",
+            reply_to="channel:1465867928724439043",
+            ssh_host="jason@macbook.local"
+        ))
     """
     integration = ClawdbotIntegration(
         reactive=reactive,
         channel=channel,
-        reply_to=reply_to
+        reply_to=reply_to,
+        ssh_host=ssh_host
     )
     return integration.handle_event
 

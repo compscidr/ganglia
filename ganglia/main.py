@@ -123,6 +123,11 @@ def main():
         help="Clawdbot reply target (default: channel:1465867928724439043)"
     )
     parser.add_argument(
+        "--ssh-host",
+        default=None,
+        help="SSH host where Clawdbot runs (e.g., jason@macbook.local) for remote sensors"
+    )
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="Suppress status messages, only output events"
@@ -141,12 +146,14 @@ def main():
         handler = create_clawdbot_handler(
             reactive=args.clawdbot_reactive,
             channel=args.clawdbot_channel,
-            reply_to=args.clawdbot_target
+            reply_to=args.clawdbot_target,
+            ssh_host=args.ssh_host
         )
         emitter.add_handler(handler)
         if not args.quiet:
             if args.clawdbot_reactive:
-                print(f"🤖 Reactive mode: will trigger Clawdbot on speech")
+                mode = f"via SSH to {args.ssh_host}" if args.ssh_host else "locally"
+                print(f"🤖 Reactive mode: will trigger Clawdbot on speech ({mode})")
             else:
                 print(f"🤖 Writing events to Clawdbot (~/.clawdbot/ganglia-events.jsonl)")
     if args.output:
