@@ -38,6 +38,7 @@ class ClawdbotIntegration:
         channel: str = "discord",
         reply_to: Optional[str] = None,  # e.g., "channel:1234567890"
         ssh_host: Optional[str] = None,  # e.g., "jason@macbook.local"
+        webhook_url: Optional[str] = None,  # Discord webhook URL for posting voice as "user"
     ):
         self.events_file = events_file or DEFAULT_EVENTS_FILE
         self.max_events = max_events
@@ -45,6 +46,7 @@ class ClawdbotIntegration:
         self.channel = channel
         self.reply_to = reply_to
         self.ssh_host = ssh_host
+        self.webhook_url = webhook_url
         
         # Ensure directory exists (only if local)
         if not ssh_host:
@@ -77,47 +79,61 @@ class ClawdbotIntegration:
             return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     def _trigger_agent(self, event: Event):
-        """Trigger Clawdbot agent directly with speech event."""
+        """Post voice input via Discord webhook (appears as user message, triggers agent naturally)."""
         text = event.data.get("text", "")
         if not text.strip():
             return
         
-        # Extract channel ID from reply_to (e.g., "channel:1465867928724439043" -> "1465867928724439043")
-        channel_id = None
-        if self.reply_to and self.reply_to.startswith("channel:"):
-            channel_id = self.reply_to.split(":", 1)[1]
-        
-        # Build session ID to route to the existing Discord conversation
-        # Format: agent:main:discord:channel:{channel_id}
-        session_id = None
-        if self.channel == "discord" and channel_id:
-            session_id = f"agent:main:discord:channel:{channel_id}"
-        
-        # Build the clawdbot command
-        cmd = [
-            "clawdbot", "agent",
-            "--message", f"🎤 [Voice] {text}",
-            "--channel", self.channel,
-            "--deliver",
-        ]
-        
-        # Use session-id to route to existing conversation, otherwise use agent main
-        if session_id:
-            cmd.extend(["--session-id", session_id])
+        # If webhook URL is configured, post there (best approach - appears as user message)
+        if self.webhook_url:
+            self._post_to_webhook(text)
         else:
-            cmd.extend(["--agent", "main"])
+            # Fallback: write to shared events file and hope agent checks it
+            self._write_shared_event(text)
+            print(f"⚠️ No webhook configured - wrote to shared events (agent may not see immediately)")
+    
+    def _post_to_webhook(self, text: str):
+        """Post to Discord webhook - appears as different user, triggers agent naturally."""
+        import urllib.request
+        import json
         
-        if self.reply_to:
-            cmd.extend(["--reply-to", self.reply_to])
+        payload = {
+            "username": "🎤 Voice Input",
+            "content": text,
+        }
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            self.webhook_url,
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
         
         try:
-            self._run_command(cmd)
+            urllib.request.urlopen(req, timeout=10)
             preview = text[:50] + "..." if len(text) > 50 else text
-            mode = "ssh" if self.ssh_host else "local"
-            routing = f"session:{session_id}" if session_id else "agent:main"
-            print(f"🎤 Triggered agent ({mode}, {routing}): \"{preview}\"")
+            print(f"🎤 Posted to webhook: \"{preview}\"")
         except Exception as e:
-            print(f"⚠️ Failed: {e}")
+            print(f"⚠️ Webhook failed: {e}")
+    
+    def _write_shared_event(self, text: str):
+        """Write to shared events file as fallback."""
+        shared_events_file = Path.home() / "clawd" / "memory" / "shared" / "events.jsonl"
+        if shared_events_file.parent.exists():
+            import json
+            from datetime import datetime
+            shared_event = {
+                "ts": datetime.utcnow().isoformat() + "Z",
+                "source": "ganglia:voice", 
+                "type": "voice_input",
+                "summary": f"🎤 Voice: {text}",
+                "details": {"text": text}
+            }
+            try:
+                with open(shared_events_file, "a") as f:
+                    f.write(json.dumps(shared_event) + "\n")
+            except Exception:
+                pass
     
     def _trim_events_file(self):
         """Keep only the last N events."""
@@ -170,7 +186,8 @@ def create_clawdbot_handler(
     reactive: bool = False,
     channel: str = "discord", 
     reply_to: Optional[str] = None,
-    ssh_host: Optional[str] = None
+    ssh_host: Optional[str] = None,
+    webhook_url: Optional[str] = None
 ):
     """
     Create an event handler for Clawdbot.
@@ -179,32 +196,25 @@ def create_clawdbot_handler(
         reactive: If True, trigger agent immediately on speech events
         channel: Delivery channel (discord, telegram, etc.)
         reply_to: Target for replies (e.g., "channel:1234567890")
-        ssh_host: SSH host for remote clawdbot (e.g., "jason@macbook.local")
+        ssh_host: SSH host for remote clawdbot (e.g., "jason@macbook.local") [DEPRECATED]
+        webhook_url: Discord webhook URL - posts voice as "user message" which triggers agent naturally
     
     Usage:
-        # Polling mode (write to file)
+        # Polling mode (write to file only)
         emitter.add_handler(create_clawdbot_handler())
         
-        # Reactive mode (trigger agent immediately)  
+        # Webhook mode (RECOMMENDED - voice appears as user message, triggers agent)  
         emitter.add_handler(create_clawdbot_handler(
             reactive=True,
-            channel="discord",
-            reply_to="channel:1465867928724439043"
-        ))
-        
-        # Remote mode (sensors on Ubuntu, Clawdbot on Mac)
-        emitter.add_handler(create_clawdbot_handler(
-            reactive=True,
-            channel="discord",
-            reply_to="channel:1465867928724439043",
-            ssh_host="jason@macbook.local"
+            webhook_url="https://discord.com/api/webhooks/..."
         ))
     """
     integration = ClawdbotIntegration(
         reactive=reactive,
         channel=channel,
         reply_to=reply_to,
-        ssh_host=ssh_host
+        ssh_host=ssh_host,
+        webhook_url=webhook_url
     )
     return integration.handle_event
 

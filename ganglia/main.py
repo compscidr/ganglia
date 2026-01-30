@@ -125,7 +125,12 @@ def main():
     parser.add_argument(
         "--ssh-host",
         default=None,
-        help="SSH host where Clawdbot runs (e.g., jason@macbook.local) for remote sensors"
+        help="[DEPRECATED] SSH host where Clawdbot runs - use --webhook-url instead"
+    )
+    parser.add_argument(
+        "--webhook-url",
+        default=None,
+        help="Discord webhook URL - voice posts as 'user message' which triggers Kai naturally"
     )
     parser.add_argument(
         "--quiet", "-q",
@@ -147,13 +152,18 @@ def main():
             reactive=args.clawdbot_reactive,
             channel=args.clawdbot_channel,
             reply_to=args.clawdbot_target,
-            ssh_host=args.ssh_host
+            ssh_host=args.ssh_host,
+            webhook_url=args.webhook_url
         )
         emitter.add_handler(handler)
         if not args.quiet:
             if args.clawdbot_reactive:
-                mode = f"via SSH to {args.ssh_host}" if args.ssh_host else "locally"
-                print(f"🤖 Reactive mode: will trigger Clawdbot on speech ({mode})")
+                if args.webhook_url:
+                    print(f"🤖 Reactive mode: will post to Discord webhook (voice appears as user message)")
+                elif args.ssh_host:
+                    print(f"🤖 Reactive mode: will trigger Clawdbot via SSH to {args.ssh_host}")
+                else:
+                    print(f"🤖 Reactive mode: will trigger Clawdbot locally")
             else:
                 print(f"🤖 Writing events to Clawdbot (~/.clawdbot/ganglia-events.jsonl)")
     if args.output:
