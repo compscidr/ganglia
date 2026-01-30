@@ -62,10 +62,23 @@ class ClawdbotIntegration:
             self._trigger_agent(event)
     
     def _write_event(self, event: Event):
-        """Write an event to the events file."""
-        with open(self.events_file, "a") as f:
-            f.write(event.to_json() + "\n")
-        self._trim_events_file()
+        """Write an event to the events file (via SSH if remote)."""
+        event_json = event.to_json()
+        
+        if self.ssh_host:
+            # Write to remote events file via SSH
+            import subprocess
+            import shlex
+            cmd = ["ssh", self.ssh_host, f"echo {shlex.quote(event_json)} >> ~/.clawdbot/ganglia-events.jsonl"]
+            try:
+                subprocess.run(cmd, timeout=5, capture_output=True)
+            except Exception as e:
+                print(f"⚠️ Failed to write event via SSH: {e}")
+        else:
+            # Write locally
+            with open(self.events_file, "a") as f:
+                f.write(event_json + "\n")
+            self._trim_events_file()
     
     def _run_command(self, cmd: list):
         """Run a command locally or via SSH."""
@@ -79,36 +92,26 @@ class ClawdbotIntegration:
             return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     def _trigger_agent(self, event: Event):
-        """Trigger agent with session ID for full conversation context."""
+        """Send voice message to Discord channel (with allowBots, Kai sees it in his context)."""
         text = event.data.get("text", "")
         if not text.strip():
             return
         
-        # Get session ID - either from file (local) or via SSH (remote)
-        session_id = self._get_session_id()
-        
         target = self.reply_to or "channel:1465867928724439043"
         
-        # Build the command
+        # Just send a message to Discord - with allowBots enabled, Kai should see it
         cmd = [
-            "clawdbot", "agent",
-            "--message", f"🎤 [Voice] {text}",
+            "clawdbot", "message", "send",
             "--channel", self.channel,
-            "--reply-to", target,
-            "--deliver",
+            "--target", target,
+            "--message", f"🎤 **[Voice]** {text}",
         ]
-        
-        if session_id:
-            cmd.extend(["--session-id", session_id])
-        else:
-            cmd.extend(["--agent", "main"])
         
         try:
             self._run_command(cmd)
             preview = text[:50] + "..." if len(text) > 50 else text
             mode = "ssh" if self.ssh_host else "local"
-            sid_info = f"session:{session_id[:20]}..." if session_id else "agent:main"
-            print(f"🎤 Triggered agent ({mode}, {sid_info}): \"{preview}\"")
+            print(f"🎤 Sent to Discord ({mode}): \"{preview}\"")
         except Exception as e:
             print(f"⚠️ Failed: {e}")
     
