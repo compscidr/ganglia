@@ -23,6 +23,13 @@ class AudioChunk:
     is_speech: bool
 
 
+def is_speaker_active() -> bool:
+    """Check if TTS is currently playing (to avoid feedback loops)."""
+    from pathlib import Path
+    speaking_file = Path.home() / ".clawdbot" / "ganglia-speaking"
+    return speaking_file.exists()
+
+
 class AudioListener:
     """
     Listens to microphone input and yields speech segments.
@@ -109,6 +116,15 @@ class AudioListener:
                 try:
                     audio_data = self._audio_queue.get(timeout=1.0)
                 except queue.Empty:
+                    continue
+                
+                # Skip processing if TTS is playing (avoid feedback loop)
+                if is_speaker_active():
+                    # Clear any in-progress speech buffer to avoid capturing TTS
+                    if in_speech:
+                        speech_buffer = []
+                        in_speech = False
+                        silence_chunks = 0
                     continue
                 
                 # Flatten to 1D if needed

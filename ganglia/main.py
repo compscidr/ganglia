@@ -8,10 +8,12 @@ Listens to microphone, detects speech, transcribes, and emits events.
 
 import argparse
 import sys
+import threading
 from typing import Optional
 
 from ganglia.audio.listener import AudioListener, list_devices
 from ganglia.audio.transcribe import Transcriber
+from ganglia.audio.speaker import Speaker
 from ganglia.events import EventEmitter, speech_event
 from ganglia.integrations.clawdbot import create_clawdbot_handler
 
@@ -59,6 +61,19 @@ def main():
         type=float,
         default=1.0,
         help="Seconds of silence to end speech segment (default: 1.0)"
+    )
+    
+    # TTS settings
+    parser.add_argument(
+        "--tts",
+        action="store_true",
+        help="Enable TTS speaker - watches queue and speaks responses"
+    )
+    parser.add_argument(
+        "--tts-engine",
+        default="espeak",
+        choices=["espeak", "pyttsx3", "say"],
+        help="TTS engine (default: espeak for Linux, say for macOS)"
     )
     
     # Output settings
@@ -121,6 +136,16 @@ def main():
     if not args.clawdbot and not args.clawdbot_reactive and not args.output:
         emitter.add_stdout_handler()
     
+    # Initialize TTS speaker if enabled
+    speaker = None
+    speaker_thread = None
+    if args.tts:
+        speaker = Speaker(tts_engine=args.tts_engine)
+        speaker_thread = threading.Thread(target=speaker.watch_queue, daemon=True)
+        speaker_thread.start()
+        if not args.quiet:
+            print(f"🔊 TTS enabled (engine: {args.tts_engine})")
+    
     # Initialize components
     if not args.quiet:
         print("="*50)
@@ -174,6 +199,8 @@ def main():
                     print(f"   (no speech detected)")
                     
     except KeyboardInterrupt:
+        if speaker:
+            speaker.stop()
         if not args.quiet:
             print("\n\n👋 Stopped.")
         return 0
