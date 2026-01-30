@@ -97,13 +97,14 @@ def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
 
 def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
     """Send notification to Clawdbot agent."""
-    # Escape quotes in message
-    safe_message = message.replace('"', '\\"').replace("'", "\\'")
-    clawdbot_cmd = f'clawdbot agent --channel {channel} --to "{target}" --message "[Ganglia] {safe_message}" --deliver'
+    # Escape special characters for shell
+    safe_message = message.replace("'", "'\\''")
     
     if ssh_host:
         # Run via SSH with login shell to get proper PATH
-        cmd = ["ssh", ssh_host, f'bash -lc "{clawdbot_cmd}"']
+        # Use single quotes to prevent any shell expansion
+        clawdbot_cmd = f"clawdbot agent --channel {channel} --to '{target}' --message '[Ganglia] {safe_message}' --deliver"
+        cmd = ["ssh", ssh_host, "--", "bash", "-lc", clawdbot_cmd]
     else:
         # Run locally
         cmd = ["clawdbot", "agent", "--channel", channel, "--to", target,
