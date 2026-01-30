@@ -209,6 +209,8 @@ def main():
                             describe_frame_clawdbot(frame, f"The user said: \"{result.text}\". Describe what you see and respond to their request.")
                             if not args.quiet:
                                 print(f"   📷 Frame sent for analysis")
+                            # Skip speech event - vision handler already triggered agent
+                            continue
                         else:
                             if not args.quiet:
                                 print(f"   ⚠️ Failed to capture frame")
@@ -216,7 +218,7 @@ def main():
                         if not args.quiet:
                             print(f"   ⚠️ Vision error: {e}")
                 
-                # Emit event
+                # Emit event (only if vision didn't handle it)
                 event = speech_event(
                     text=result.text,
                     language=result.language,
