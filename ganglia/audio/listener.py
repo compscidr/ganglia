@@ -33,14 +33,15 @@ class AudioListener:
     def __init__(
         self,
         sample_rate: int = 16000,
-        chunk_duration: float = 0.5,  # seconds per chunk
+        chunk_duration: float = 0.032,  # ~32ms for VAD (512 samples at 16kHz)
         speech_threshold: float = 0.5,
         silence_duration: float = 1.0,  # seconds of silence to end segment
         min_speech_duration: float = 0.5,  # minimum speech to process
         device: Optional[int] = None,  # None = default mic
     ):
         self.sample_rate = sample_rate
-        self.chunk_duration = chunk_duration
+        # Silero VAD requires exactly 512 samples at 16kHz
+        self.chunk_duration = 512 / sample_rate  # ~32ms
         self.speech_threshold = speech_threshold
         self.silence_duration = silence_duration
         self.min_speech_duration = min_speech_duration
