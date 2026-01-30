@@ -37,6 +37,7 @@ class AudioListener:
         speech_threshold: float = 0.5,
         silence_duration: float = 1.0,  # seconds of silence to end segment
         min_speech_duration: float = 0.5,  # minimum speech to process
+        pre_buffer_duration: float = 0.5,  # seconds of audio to keep before speech detected
         device: Optional[int] = None,  # None = default mic
     ):
         self.sample_rate = sample_rate
@@ -45,6 +46,7 @@ class AudioListener:
         self.speech_threshold = speech_threshold
         self.silence_duration = silence_duration
         self.min_speech_duration = min_speech_duration
+        self.pre_buffer_duration = pre_buffer_duration
         self.device = device
         
         self._audio_queue: queue.Queue = queue.Queue()
@@ -85,11 +87,15 @@ class AudioListener:
         
         self._running = True
         speech_buffer = []
+        pre_buffer = []  # Rolling buffer of recent audio (before speech detected)
+        max_pre_chunks = int(self.pre_buffer_duration / self.chunk_duration)
         silence_chunks = 0
         max_silence_chunks = int(self.silence_duration / self.chunk_duration)
+        in_speech = False
         
         print(f"🎤 Listening on device: {self.device or 'default'}")
         print(f"   Sample rate: {self.sample_rate}Hz, Chunk: {self.chunk_duration}s")
+        print(f"   Pre-buffer: {self.pre_buffer_duration}s ({max_pre_chunks} chunks)")
         
         with sd.InputStream(
             samplerate=self.sample_rate,
@@ -116,9 +122,14 @@ class AudioListener:
                 timestamp = time.time()
                 
                 if is_speech:
+                    if not in_speech:
+                        # Speech just started - prepend pre-buffer to catch beginning
+                        in_speech = True
+                        speech_buffer = list(pre_buffer)  # Copy pre-buffer
+                        pre_buffer = []
                     speech_buffer.append(audio_flat)
                     silence_chunks = 0
-                elif speech_buffer:
+                elif in_speech:
                     silence_chunks += 1
                     speech_buffer.append(audio_flat)  # Include trailing silence
                     
@@ -138,6 +149,12 @@ class AudioListener:
                         
                         speech_buffer = []
                         silence_chunks = 0
+                        in_speech = False
+                else:
+                    # Not in speech - maintain rolling pre-buffer
+                    pre_buffer.append(audio_flat)
+                    if len(pre_buffer) > max_pre_chunks:
+                        pre_buffer.pop(0)
     
     def stop(self):
         """Stop listening."""

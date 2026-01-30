@@ -61,36 +61,52 @@ class ClawdbotIntegration:
         self._trim_events_file()
     
     def _trigger_agent(self, event: Event):
-        """Trigger Clawdbot agent with the speech event."""
+        """Post transcription visibly AND trigger agent in current session."""
         text = event.data.get("text", "")
         if not text.strip():
             return
         
-        # Format the message for the agent
-        message = f"[Ganglia Audio] I heard you say: \"{text}\""
+        target = self.reply_to or "channel:1465867928724439043"
+        session_id_file = Path.home() / ".clawdbot" / "ganglia-session-id"
         
-        # Build the clawdbot command
-        cmd = [
-            "clawdbot", "agent",
-            "--agent", "main",
-            "--message", message,
+        # Read session ID if available (routes to existing conversation)
+        session_id = None
+        if session_id_file.exists():
+            session_id = session_id_file.read_text().strip()
+        
+        # Step 1: Post transcription visibly to Discord so user sees what was heard
+        post_cmd = [
+            "clawdbot", "message", "send",
             "--channel", self.channel,
+            "--target", target,
+            "--message", f"🎤 **[Voice]** {text}",
+        ]
+        
+        # Step 2: Trigger agent with session context
+        agent_cmd = [
+            "clawdbot", "agent",
+            "--message", f"🎤 [Voice] Jason said: \"{text}\"",
+            "--channel", self.channel,
+            "--reply-to", target,
             "--deliver",
         ]
         
-        if self.reply_to:
-            cmd.extend(["--reply-to", self.reply_to])
+        if session_id:
+            agent_cmd.extend(["--session-id", session_id])
+        else:
+            agent_cmd.extend(["--agent", "main"])
         
         try:
-            # Run async so we don't block the listener
-            subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            print(f"🤖 Triggered Clawdbot agent with: \"{text[:50]}...\"" if len(text) > 50 else f"🤖 Triggered Clawdbot agent with: \"{text}\"")
+            # Post visible transcription first
+            subprocess.Popen(post_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Then trigger agent
+            subprocess.Popen(agent_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            preview = text[:50] + "..." if len(text) > 50 else text
+            mode = "session" if session_id else "isolated"
+            print(f"🎤 Posted + triggered ({mode}): \"{preview}\"")
         except Exception as e:
-            print(f"⚠️ Failed to trigger agent: {e}")
+            print(f"⚠️ Failed: {e}")
     
     def _trim_events_file(self):
         """Keep only the last N events."""

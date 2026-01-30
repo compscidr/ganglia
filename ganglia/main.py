@@ -84,8 +84,8 @@ def main():
     )
     parser.add_argument(
         "--clawdbot-target",
-        default=None,
-        help="Clawdbot reply target (e.g., channel:1465867928724439043)"
+        default="channel:1465867928724439043",
+        help="Clawdbot reply target (default: channel:1465867928724439043)"
     )
     parser.add_argument(
         "--quiet", "-q",
