@@ -79,61 +79,62 @@ class ClawdbotIntegration:
             return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     def _trigger_agent(self, event: Event):
-        """Post voice input via Discord webhook (appears as user message, triggers agent naturally)."""
+        """Trigger agent with session ID for full conversation context."""
         text = event.data.get("text", "")
         if not text.strip():
             return
         
-        # If webhook URL is configured, post there (best approach - appears as user message)
-        if self.webhook_url:
-            self._post_to_webhook(text)
+        # Get session ID - either from file (local) or via SSH (remote)
+        session_id = self._get_session_id()
+        
+        target = self.reply_to or "channel:1465867928724439043"
+        
+        # Build the command
+        cmd = [
+            "clawdbot", "agent",
+            "--message", f"🎤 [Voice] {text}",
+            "--channel", self.channel,
+            "--reply-to", target,
+            "--deliver",
+        ]
+        
+        if session_id:
+            cmd.extend(["--session-id", session_id])
         else:
-            # Fallback: write to shared events file and hope agent checks it
-            self._write_shared_event(text)
-            print(f"⚠️ No webhook configured - wrote to shared events (agent may not see immediately)")
-    
-    def _post_to_webhook(self, text: str):
-        """Post to Discord webhook - appears as different user, triggers agent naturally."""
-        import urllib.request
-        import json
-        
-        payload = {
-            "username": "🎤 Voice Input",
-            "content": text,
-        }
-        
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            self.webhook_url,
-            data=data,
-            headers={'Content-Type': 'application/json'}
-        )
+            cmd.extend(["--agent", "main"])
         
         try:
-            urllib.request.urlopen(req, timeout=10)
+            self._run_command(cmd)
             preview = text[:50] + "..." if len(text) > 50 else text
-            print(f"🎤 Posted to webhook: \"{preview}\"")
+            mode = "ssh" if self.ssh_host else "local"
+            sid_info = f"session:{session_id[:20]}..." if session_id else "agent:main"
+            print(f"🎤 Triggered agent ({mode}, {sid_info}): \"{preview}\"")
         except Exception as e:
-            print(f"⚠️ Webhook failed: {e}")
+            print(f"⚠️ Failed: {e}")
     
-    def _write_shared_event(self, text: str):
-        """Write to shared events file as fallback."""
-        shared_events_file = Path.home() / "clawd" / "memory" / "shared" / "events.jsonl"
-        if shared_events_file.parent.exists():
-            import json
-            from datetime import datetime
-            shared_event = {
-                "ts": datetime.utcnow().isoformat() + "Z",
-                "source": "ganglia:voice", 
-                "type": "voice_input",
-                "summary": f"🎤 Voice: {text}",
-                "details": {"text": text}
-            }
+    def _get_session_id(self) -> Optional[str]:
+        """Get session ID from file, via SSH if remote."""
+        session_id_file = "~/.clawdbot/ganglia-session-id"
+        
+        if self.ssh_host:
+            # Read session ID via SSH
+            import subprocess
             try:
-                with open(shared_events_file, "a") as f:
-                    f.write(json.dumps(shared_event) + "\n")
+                result = subprocess.run(
+                    ["ssh", self.ssh_host, f"cat {session_id_file}"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
             except Exception:
                 pass
+        else:
+            # Read locally
+            local_file = Path.home() / ".clawdbot" / "ganglia-session-id"
+            if local_file.exists():
+                return local_file.read_text().strip()
+        
+        return None
     
     def _trim_events_file(self):
         """Keep only the last N events."""
