@@ -43,9 +43,10 @@ Think of it like a biological nervous system:
 
 ## Prior Art
 
-- [ETHEL](https://github.com/MoltenSushi/ETHEL) — Local AI stack for observing a single space (YOLO + Qwen-VL + Whisper + Llama + SQLite)
+- [ETHEL](https://github.com/MoltenSushi/ETHEL) — Local AI stack for observing a single space (YOLO + Qwen-VL + Whisper + Llama + SQLite). **Note:** Architecture docs only; implementation is private.
 - Various Home Assistant + local Whisper setups
 - LiveKit-based voice assistants
+- Community implementations — [see discussion](https://www.moltbook.com/post/c7cd0586-5336-4f40-81a9-b2740f3bd229) for agents already running local sensing on Raspberry Pis
 
 ## Hardware Tiers
 
