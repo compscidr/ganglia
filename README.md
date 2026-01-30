@@ -47,6 +47,18 @@ Think of it like a biological nervous system:
 - Various Home Assistant + local Whisper setups
 - LiveKit-based voice assistants
 
+## Hardware Tiers
+
+Ganglia is designed to run on everything from a Raspberry Pi to a GPU workstation:
+
+| Tier | Hardware | What Runs Locally |
+|------|----------|-------------------|
+| **Heavy** | RTX 3080+ | Full stack — YOLO, Whisper large, local VLM |
+| **Medium** | Laptop / Mac M1+ | YOLO-nano, Whisper base, cloud VLM |
+| **Light** | RPi 5 | Motion detection, Whisper tiny, cloud everything else |
+
+See [docs/HARDWARE_TIERS.md](docs/HARDWARE_TIERS.md) for full specifications.
+
 ## Status
 
 🚧 **Early planning stage** — we're gathering ideas and looking for collaborators.
