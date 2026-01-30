@@ -95,13 +95,30 @@ def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
     
     return ""
 
-def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
-    """Send notification to Clawdbot agent."""
-    # Escape special characters
+def notify_agent(message: str, channel: str, target: str, ssh_host: str = None, webhook_url: str = None):
+    """Send notification to Clawdbot agent via webhook or clawdbot CLI."""
+    import requests as req
+    
+    if webhook_url:
+        # Use webhook directly - works for both local and remote
+        print(f"Notifying via webhook: {message[:50]}...")
+        try:
+            resp = req.post(webhook_url, json={
+                "content": f"[Ganglia] {message}",
+                "username": "Ganglia 🎤"
+            })
+            if resp.status_code not in (200, 204):
+                print(f"Webhook failed: {resp.status_code} {resp.text}")
+                return False
+            return True
+        except Exception as e:
+            print(f"Webhook error: {e}")
+            return False
+    
+    # Fallback to clawdbot CLI
     safe_message = message.replace('\\', '\\\\').replace('"', '\\"')
     
     if ssh_host:
-        # Write command to temp script and execute via SSH to avoid quoting hell
         import shlex
         args = [
             "clawdbot", "message", "send",
@@ -109,7 +126,6 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
             "--target", target,
             "--message", f"[Ganglia] {safe_message}"
         ]
-        # Use shlex.join for proper escaping, then wrap for bash -lc
         escaped_cmd = shlex.join(args)
         full_cmd = ["ssh", ssh_host, f"bash -lc {shlex.quote(escaped_cmd)}"]
         print(f"DEBUG: {' '.join(full_cmd)}")
@@ -119,8 +135,8 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
         return result.returncode == 0
     else:
         # Run locally
-        cmd = ["clawdbot", "agent", "--channel", channel, "--to", target,
-               "--message", f"[Ganglia] {message}", "--deliver"]
+        cmd = ["clawdbot", "message", "send", "--channel", channel, "--target", target,
+               "--message", f"[Ganglia] {message}"]
         print(f"Notifying: {message[:50]}...")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -131,6 +147,7 @@ def listen_loop(
     channel: str,
     target: str,
     ssh_host: str = None,
+    webhook_url: str = None,
     vad_type: str = "auto",
     transcribe_method: str = "whisper-cli",
     silence_threshold: float = 1.5,
@@ -166,6 +183,7 @@ def listen_loop(
     print(f"\n🎤 Ganglia listening...")
     print(f"   Channel: {channel}")
     print(f"   Target: {target}")
+    print(f"   Webhook: {'yes' if webhook_url else 'no'}")
     print(f"   SSH Host: {ssh_host or 'local'}")
     print(f"   Press Ctrl+C to stop\n")
     
@@ -235,7 +253,7 @@ def listen_loop(
                         
                         if transcript:
                             print(f"📝 Transcript: {transcript}")
-                            notify_agent(f"Speech: {transcript}", channel, target, ssh_host)
+                            notify_agent(f"Speech: {transcript}", channel, target, ssh_host, webhook_url)
                             last_notify_time = time.time()
                         else:
                             print("❌ Transcription failed or empty")
@@ -252,8 +270,9 @@ def listen_loop(
 
 def main():
     parser = argparse.ArgumentParser(description="Ganglia - Continuous audio monitoring for Clawdbot")
-    parser.add_argument("--channel", required=True, help="Clawdbot channel (discord, telegram, etc.)")
-    parser.add_argument("--target", required=True, help="Channel/chat target ID")
+    parser.add_argument("--channel", default="discord", help="Clawdbot channel (discord, telegram, etc.)")
+    parser.add_argument("--target", default="", help="Channel/chat target ID (not needed with webhook)")
+    parser.add_argument("--webhook-url", help="Discord webhook URL (preferred method)")
     parser.add_argument("--ssh-host", help="SSH host where clawdbot runs (e.g., macbook.local)")
     parser.add_argument("--vad", choices=["auto", "silero", "simple"], default="auto", help="VAD method")
     parser.add_argument("--transcribe", choices=["whisper-cli", "whisper-python", "shell"], 
@@ -273,6 +292,7 @@ def main():
         channel=args.channel,
         target=args.target,
         ssh_host=args.ssh_host,
+        webhook_url=args.webhook_url,
         vad_type=args.vad,
         transcribe_method=args.transcribe,
         silence_threshold=args.silence_threshold,
