@@ -108,7 +108,9 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
             "--channel", channel,
             "--to", target,
             "--message", f"[Ganglia] {safe_message}",
-            "--deliver"
+            "--deliver",
+            "--reply-channel", channel,
+            "--reply-to", target
         ]
         # Use shlex.join for proper escaping, then wrap for bash -lc
         escaped_cmd = shlex.join(args)
