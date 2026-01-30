@@ -95,17 +95,20 @@ def transcribe_audio(audio_path: str, method: str = "whisper-cli") -> str:
     
     return ""
 
-def notify_agent(message: str, channel: str, target: str, ssh_host: str = None, webhook_url: str = None):
+def notify_agent(message: str, channel: str, target: str, ssh_host: str = None, webhook_url: str = None, bot_id: str = None):
     """Send notification to Clawdbot agent via webhook or clawdbot CLI."""
     import requests as req
     
     if webhook_url:
         # Use webhook directly - works for both local and remote
-        # Include bot mention to trigger response
         print(f"Notifying via webhook: {message[:50]}...")
+        # Include bot mention to trigger response if bot_id provided
+        content = f"[Ganglia] {message}"
+        if bot_id:
+            content = f"<@{bot_id}> {content}"
         try:
             resp = req.post(webhook_url, json={
-                "content": f"<@1465867378192810197> [Ganglia] {message}",
+                "content": content,
                 "username": "Ganglia 🎤"
             })
             if resp.status_code not in (200, 204):

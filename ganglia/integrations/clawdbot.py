@@ -77,52 +77,28 @@ class ClawdbotIntegration:
             return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     def _trigger_agent(self, event: Event):
-        """Post transcription visibly AND trigger agent in current session."""
+        """Trigger Clawdbot agent directly with speech event."""
         text = event.data.get("text", "")
         if not text.strip():
             return
         
-        target = self.reply_to or "channel:1465867928724439043"
-        
-        # Read session ID if available (routes to existing conversation)
-        # Only check locally - remote won't have this file
-        session_id = None
-        if not self.ssh_host:
-            session_id_file = Path.home() / ".clawdbot" / "ganglia-session-id"
-            if session_id_file.exists():
-                session_id = session_id_file.read_text().strip()
-        
-        # Step 1: Post transcription visibly so user sees what was heard
-        post_cmd = [
-            "clawdbot", "message", "send",
-            "--channel", self.channel,
-            "--target", target,
-            "--message", f"🎤 **[Voice]** {text}",
-        ]
-        
-        # Step 2: Trigger agent with session context
-        agent_cmd = [
+        # Build the clawdbot command - simple approach, just trigger agent
+        cmd = [
             "clawdbot", "agent",
-            "--message", f"🎤 [Voice] Jason said: \"{text}\"",
+            "--agent", "main",
+            "--message", f"🎤 [Voice] {text}",
             "--channel", self.channel,
-            "--reply-to", target,
             "--deliver",
         ]
         
-        if session_id:
-            agent_cmd.extend(["--session-id", session_id])
-        else:
-            agent_cmd.extend(["--agent", "main"])
+        if self.reply_to:
+            cmd.extend(["--reply-to", self.reply_to])
         
         try:
-            # Post visible transcription first
-            self._run_command(post_cmd)
-            # Then trigger agent
-            self._run_command(agent_cmd)
-            
+            self._run_command(cmd)
             preview = text[:50] + "..." if len(text) > 50 else text
-            mode = "ssh" if self.ssh_host else ("session" if session_id else "isolated")
-            print(f"🎤 Posted + triggered ({mode}): \"{preview}\"")
+            mode = "ssh" if self.ssh_host else "local"
+            print(f"🎤 Triggered agent ({mode}): \"{preview}\"")
         except Exception as e:
             print(f"⚠️ Failed: {e}")
     
