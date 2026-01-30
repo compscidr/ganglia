@@ -172,6 +172,40 @@ For users with depth-sensing cameras (Intel RealSense, ZED, OAK-D, stereo rigs):
 
 ---
 
+## Experimental: RF Sensing (SDR)
+
+For users with Software Defined Radios — electromagnetic spectrum as a sense:
+
+### Capabilities
+| Technique | What It Detects |
+|-----------|-----------------|
+| **Passive WiFi/BT** | Device presence without cameras (phone arrived home) |
+| **RF fingerprinting** | Distinguish known vs unknown devices |
+| **Doppler radar** | Motion detection through walls |
+| **Interference detection** | Jamming, unusual RF activity |
+| **Spectrum anomalies** | "Something weird is transmitting" |
+
+### Supported Hardware (planned)
+| SDR | Notes |
+|-----|-------|
+| RTL-SDR | Cheap, receive-only, good starting point |
+| HackRF | TX/RX, wider range |
+| USRP | Research-grade, expensive |
+| ESP32 | Basic WiFi/BT presence via CSI |
+
+### Use Cases
+- **Presence detection** — know someone's home without cameras (privacy-friendly)
+- **Device tracking** — which phones/devices are nearby
+- **Security** — detect rogue transmitters, jamming attempts
+- **Novelty trigger** — "RF environment changed" → investigate
+
+### Privacy Note
+RF sensing can be less invasive than cameras — detects presence without identifying faces. Good for "is anyone home?" without surveillance vibes.
+
+*Very experimental — most users won't have SDRs. But if you do, it's a unique sensing modality.*
+
+---
+
 ## Future: Distributed Mode
 
 For setups with multiple devices (e.g., RPi sensors + central GPU server):
