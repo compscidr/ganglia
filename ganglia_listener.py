@@ -104,12 +104,10 @@ def notify_agent(message: str, channel: str, target: str, ssh_host: str = None):
         # Write command to temp script and execute via SSH to avoid quoting hell
         import shlex
         args = [
-            "clawdbot", "agent",
-            "--session-id", target,  # For Discord, pass the session ID directly
-            "--message", f"[Ganglia] {safe_message}",
-            "--deliver",
-            "--reply-channel", channel,
-            "--reply-to", f"channel:{target}" if not target.startswith("channel:") else target
+            "clawdbot", "message", "send",
+            "--channel", channel,
+            "--target", target,
+            "--message", f"[Ganglia] {safe_message}"
         ]
         # Use shlex.join for proper escaping, then wrap for bash -lc
         escaped_cmd = shlex.join(args)
