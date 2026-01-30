@@ -1,0 +1,4 @@
+# Ganglia Listener dependencies
+pyaudio
+numpy
+torch  # for Silero VAD (optional, falls back to energy-based)
