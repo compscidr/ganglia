@@ -72,6 +72,7 @@ class ClawdbotIntegration:
         # Build the clawdbot command
         cmd = [
             "clawdbot", "agent",
+            "--agent", "main",
             "--message", message,
             "--channel", self.channel,
             "--deliver",
