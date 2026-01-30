@@ -73,6 +73,21 @@ def main():
         help="Write events to Clawdbot integration file (~/.clawdbot/ganglia-events.jsonl)"
     )
     parser.add_argument(
+        "--clawdbot-reactive",
+        action="store_true",
+        help="Trigger Clawdbot agent immediately on speech (reactive mode)"
+    )
+    parser.add_argument(
+        "--clawdbot-channel",
+        default="discord",
+        help="Clawdbot delivery channel (default: discord)"
+    )
+    parser.add_argument(
+        "--clawdbot-target",
+        default=None,
+        help="Clawdbot reply target (e.g., channel:1465867928724439043)"
+    )
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="Suppress status messages, only output events"
@@ -87,15 +102,23 @@ def main():
     
     # Set up event emitter
     emitter = EventEmitter()
-    if args.clawdbot:
-        emitter.add_handler(create_clawdbot_handler())
+    if args.clawdbot or args.clawdbot_reactive:
+        handler = create_clawdbot_handler(
+            reactive=args.clawdbot_reactive,
+            channel=args.clawdbot_channel,
+            reply_to=args.clawdbot_target
+        )
+        emitter.add_handler(handler)
         if not args.quiet:
-            print(f"🤖 Writing events to Clawdbot (~/.clawdbot/ganglia-events.jsonl)")
+            if args.clawdbot_reactive:
+                print(f"🤖 Reactive mode: will trigger Clawdbot on speech")
+            else:
+                print(f"🤖 Writing events to Clawdbot (~/.clawdbot/ganglia-events.jsonl)")
     if args.output:
         emitter.add_file_handler(args.output)
         if not args.quiet:
             print(f"📁 Writing events to: {args.output}")
-    if not args.clawdbot and not args.output:
+    if not args.clawdbot and not args.clawdbot_reactive and not args.output:
         emitter.add_stdout_handler()
     
     # Initialize components
