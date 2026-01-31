@@ -66,6 +66,12 @@ Examples:
     parser.add_argument("--face", action="store_true",
                         help="Show ocean wave face visualization")
     
+    # Vision
+    parser.add_argument("--vision", action="store_true",
+                        help="Enable camera vision (capture on 'what do you see' or periodic)")
+    parser.add_argument("--vision-interval", type=int, default=0,
+                        help="Seconds between auto-captures (0 = voice-triggered only)")
+    
     # Transcription options
     parser.add_argument("--transcribe", default="whisper-cli",
                         choices=["whisper-cli", "whisper-python", "shell"],
@@ -109,6 +115,44 @@ Examples:
             print("   Continuing without TTS (listen only)")
             speaking_event = None  # No echo suppression needed
     
+    # Vision capture function (used by periodic or voice trigger)
+    def capture_vision():
+        """Capture a frame and send to Clawdbot for description."""
+        try:
+            from ganglia.video.capture import capture_frame
+            from ganglia.video.describe import describe_frame_clawdbot
+            
+            print("📷 Capturing frame...")
+            frame = capture_frame()
+            if frame:
+                print(f"📷 Captured {frame.width}x{frame.height}, sending to agent...")
+                describe_frame_clawdbot(
+                    frame,
+                    prompt="Briefly describe what you see.",
+                    channel=args.channel,
+                    target=args.target,
+                    ssh_host=args.ssh_host,
+                )
+            else:
+                print("⚠️ Failed to capture frame")
+        except Exception as e:
+            print(f"⚠️ Vision error: {e}")
+    
+    # Start periodic vision capture if requested
+    vision_thread = None
+    if args.vision and args.vision_interval > 0:
+        def vision_loop():
+            import time
+            while True:
+                time.sleep(args.vision_interval)
+                capture_vision()
+        
+        vision_thread = threading.Thread(target=vision_loop, daemon=True)
+        vision_thread.start()
+        print(f"👁️ Vision capture started (every {args.vision_interval}s)")
+    elif args.vision:
+        print("👁️ Vision enabled (voice-triggered: say 'what do you see')")
+    
     # Start face visualization if requested
     face = None
     face_thread = None
@@ -135,6 +179,15 @@ Examples:
     
     signal.signal(signal.SIGINT, signal_handler)
     
+    # Transcript callback for voice-triggered vision
+    def on_transcript(text):
+        if args.vision:
+            text_lower = text.lower()
+            vision_triggers = ["what do you see", "what can you see", "look around", "show me", "take a picture", "capture"]
+            if any(trigger in text_lower for trigger in vision_triggers):
+                print("👁️ Vision trigger detected!")
+                capture_vision()
+    
     # Start listener (blocks)
     print("🎤 Starting voice listener...")
     listen_loop(
@@ -145,6 +198,7 @@ Examples:
         vad_type=args.vad,
         transcribe_method=args.transcribe,
         speaking_event=speaking_event,  # For echo suppression
+        on_transcript=on_transcript if args.vision else None,
     )
 
 

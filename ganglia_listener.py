@@ -139,6 +139,7 @@ def listen_loop(
     max_speech_duration: float = 30.0,
     cooldown: float = 2.0,
     speaking_event = None,  # threading.Event set while TTS is speaking
+    on_transcript = None,  # Optional callback(text) for each transcript
 ):
     """
     Main listening loop with VAD.
@@ -149,6 +150,7 @@ def listen_loop(
     Args:
         speaking_event: Optional threading.Event - if set, mic input is ignored
                        (used for echo suppression when TTS is playing)
+        on_transcript: Optional callback called with transcript text (for triggers)
     """
     # Import integration here to avoid import errors if dependencies missing
     from ganglia.integrations.clawdbot import ClawdbotIntegration
@@ -300,6 +302,10 @@ def listen_loop(
                             )
                             integration.handle_event(event)
                             last_notify_time = time.time()
+                            
+                            # Call transcript callback if provided (for triggers)
+                            if on_transcript:
+                                on_transcript(transcript)
                         else:
                             print("❌ Transcription failed or empty")
                         
