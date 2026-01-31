@@ -273,8 +273,10 @@ def listen_loop(
                             
                             # Create event and send to Clawdbot
                             from ganglia.events import Event, EventType
+                            import time as time_module
                             event = Event(
                                 type=EventType.SPEECH,
+                                timestamp=time_module.time(),
                                 data={
                                     "text": transcript,
                                     "duration": duration,
