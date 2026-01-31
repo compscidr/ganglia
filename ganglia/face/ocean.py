@@ -97,6 +97,9 @@ class OceanFace:
         self._speaking_cache = 0.0
         self._speaking_check_timer = 0
         
+        # Stop flag for clean shutdown
+        self._running = False
+        
     def get_audio_level(self, dt: float = 0) -> float:
         """Get current audio level (0-1) from TTS playback."""
         self._speaking_check_timer += dt
@@ -209,6 +212,10 @@ class OceanFace:
             center = (self.width // 2, self.height // 3)
             pygame.draw.circle(screen, COLORS['foam'], center, glow_size)
     
+    def stop(self):
+        """Signal the visualization to stop."""
+        self._running = False
+    
     def run(self):
         """Run the visualization window."""
         pygame.init()
@@ -216,17 +223,17 @@ class OceanFace:
         pygame.display.set_caption(self.title)
         clock = pygame.time.Clock()
         
-        running = True
-        while running:
+        self._running = True
+        while self._running:
             try:
                 dt = clock.tick(60) / 1000.0  # Delta time in seconds
                 
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
-                        running = False
+                        self._running = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_ESCAPE:
-                            running = False
+                            self._running = False
                         elif event.key == pygame.K_SPACE:
                             # Manual toggle for testing
                             try:

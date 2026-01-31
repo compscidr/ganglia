@@ -110,6 +110,7 @@ Examples:
             speaking_event = None  # No echo suppression needed
     
     # Start face visualization if requested
+    face = None
     face_thread = None
     if args.face:
         try:
@@ -125,6 +126,11 @@ Examples:
     # Handle Ctrl+C gracefully
     def signal_handler(sig, frame):
         print("\n\n👋 Shutting down Ganglia Voice...")
+        # Stop face visualization cleanly
+        if face:
+            face.stop()
+            import time
+            time.sleep(0.2)  # Give pygame time to quit
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
