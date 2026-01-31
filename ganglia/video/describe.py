@@ -66,70 +66,32 @@ def describe_frame_clawdbot(
         else:
             return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     
-    # Step 1: Post the image to Discord
+    # Post image with prompt - will naturally appear in agent's session
     # For remote, use the path on the Mac
     media_path = "~/.clawdbot/ganglia-frame.jpg" if ssh_host else str(temp_path)
+    
+    # Include prompt in message so agent sees it with the image
+    message = f"👁️ **[Vision]** {prompt}"
+    
     post_cmd = [
         "clawdbot", "message", "send",
         "--channel", channel,
         "--target", target,
-        "--message", "👁️ **[Vision]** Captured frame:",
+        "--message", message,
         "--media", media_path,
     ]
     
     try:
-        run_cmd(post_cmd, timeout=30)
-    except Exception as e:
-        print(f"⚠️ Failed to post image: {e}")
-        return None
-    
-    # Step 2: Trigger agent with context to analyze the image
-    agent_message = f"👁️ [Vision] ganglia just captured and posted a camera frame above. {prompt}"
-    
-    agent_cmd = [
-        "clawdbot", "agent",
-        "--message", agent_message,
-        "--channel", channel,
-        "--reply-to", target,
-        "--deliver",
-    ]
-    
-    # Use session ID - read from remote if using SSH
-    if session_id:
-        agent_cmd.extend(["--session-id", session_id])
-    else:
-        # Try to get session ID
-        sid = None
-        if ssh_host:
-            try:
-                result = subprocess.run(
-                    ["ssh", ssh_host, "cat ~/.clawdbot/ganglia-session-id"],
-                    capture_output=True, text=True, timeout=5
-                )
-                if result.returncode == 0:
-                    sid = result.stdout.strip()
-            except:
-                pass
-        else:
-            session_id_file = Path.home() / ".clawdbot" / "ganglia-session-id"
-            if session_id_file.exists():
-                sid = session_id_file.read_text().strip()
+        result = run_cmd(post_cmd, timeout=30)
+        if result.returncode != 0:
+            print(f"⚠️ Failed to post image: {result.stderr}")
+            return None
         
-        if sid:
-            agent_cmd.extend(["--session-id", sid])
-        else:
-            agent_cmd.extend(["--agent", "main"])
-    
-    try:
-        run_cmd(agent_cmd, timeout=60)
         return VisionResult(
-            description="(sent to agent)",
+            description="(sent to channel)",
             timestamp=time.time(),
             model="clawdbot"
         )
-    except subprocess.TimeoutExpired:
-        print("⚠️ Vision request timed out")
-        return None
     except Exception as e:
         print(f"⚠️ Vision error: {e}")
         return None
