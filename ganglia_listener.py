@@ -137,13 +137,18 @@ def listen_loop(
     silence_threshold: float = 1.5,
     min_speech_duration: float = 0.5,
     max_speech_duration: float = 30.0,
-    cooldown: float = 2.0
+    cooldown: float = 2.0,
+    speaking_event = None,  # threading.Event set while TTS is speaking
 ):
     """
     Main listening loop with VAD.
     
     Continuously listens for speech, transcribes when detected, and sends
     to the configured Clawdbot session.
+    
+    Args:
+        speaking_event: Optional threading.Event - if set, mic input is ignored
+                       (used for echo suppression when TTS is playing)
     """
     # Import integration here to avoid import errors if dependencies missing
     from ganglia.integrations.clawdbot import ClawdbotIntegration
@@ -216,6 +221,16 @@ def listen_loop(
     try:
         while True:
             chunk = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            
+            # Skip processing if TTS is speaking (echo suppression)
+            if speaking_event and speaking_event.is_set():
+                # Discard audio while speaking to avoid feedback
+                if recording:
+                    print("🔇 TTS speaking, discarding recording")
+                    recording = False
+                    audio_buffer = []
+                continue
+            
             is_speech = vad(chunk)
             
             if is_speech:

@@ -64,6 +64,7 @@ class ResponseHandler:
         response_file: Path to response JSONL file
         poll_interval: Seconds between file checks
         on_response: Optional callback when response is received
+        speaking_event: Optional threading.Event set while speaking (for mic muting)
     """
     
     def __init__(
@@ -72,11 +73,15 @@ class ResponseHandler:
         response_file: Optional[Path] = None,
         poll_interval: float = 0.5,
         on_response: Optional[Callable[[Response], None]] = None,
+        speaking_event: Optional[threading.Event] = None,
     ):
         self.tts = tts
         self.response_file = response_file or DEFAULT_RESPONSE_FILE
         self.poll_interval = poll_interval
         self.on_response = on_response
+        
+        # Event that's set while TTS is speaking (for mic muting)
+        self.speaking_event = speaking_event or threading.Event()
         
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -133,11 +138,14 @@ class ResponseHandler:
         if self.on_response:
             self.on_response(response)
         
-        # Speak the response
+        # Speak the response (set speaking event to mute mic)
         try:
+            self.speaking_event.set()  # Signal: TTS is speaking
             self.tts.speak(response.text)
         except Exception as e:
             print(f"⚠️ TTS failed: {e}")
+        finally:
+            self.speaking_event.clear()  # Signal: TTS done
         
         # Update last read timestamp
         self._last_read_timestamp = response.timestamp

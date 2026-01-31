@@ -77,8 +77,12 @@ Examples:
     # Import here to avoid import errors if deps missing
     from ganglia_listener import listen_loop
     
+    # Shared event for echo suppression - set while TTS is speaking
+    speaking_event = threading.Event()
+    
     # Start TTS response handler in background thread
     response_thread = None
+    handler = None
     if not args.no_tts:
         try:
             from ganglia.integrations.response_handler import create_response_handler
@@ -86,16 +90,20 @@ Examples:
                 tts_engine="piper",
                 model=args.tts_model,
             )
+            # Share the speaking event for echo suppression
+            handler.speaking_event = speaking_event
+            
             response_thread = threading.Thread(
                 target=handler.start,
                 kwargs={"blocking": True},
                 daemon=True,
             )
             response_thread.start()
-            print("🔊 TTS response handler started")
+            print("🔊 TTS response handler started (with echo suppression)")
         except Exception as e:
             print(f"⚠️ Could not start TTS handler: {e}")
             print("   Continuing without TTS (listen only)")
+            speaking_event = None  # No echo suppression needed
     
     # Handle Ctrl+C gracefully
     def signal_handler(sig, frame):
@@ -113,6 +121,7 @@ Examples:
         speaker=args.speaker,
         vad_type=args.vad,
         transcribe_method=args.transcribe,
+        speaking_event=speaking_event,  # For echo suppression
     )
 
 
