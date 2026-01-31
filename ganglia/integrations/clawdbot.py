@@ -472,3 +472,74 @@ Examples:
             print(f"\nMarked {len(events)} events as read", file=__import__('sys').stderr)
     else:
         print("No new events", file=__import__('sys').stderr)
+
+
+# -----------------------------------------------------------------------------
+# Response Pushing (Clawdbot → Ganglia)
+# -----------------------------------------------------------------------------
+
+RESPONSE_FILE = Path.home() / ".clawdbot" / "ganglia-responses.jsonl"
+
+
+def push_response(
+    text: str,
+    ssh_host: Optional[str] = None,
+    voice: str = "default",
+) -> bool:
+    """
+    Push a text response to Ganglia for TTS playback.
+    
+    This is called from the Clawdbot side to send responses back to Ganglia.
+    Ganglia's ResponseHandler will pick up the response and speak it.
+    
+    Args:
+        text: Text to speak
+        ssh_host: SSH host where Ganglia runs (None = local)
+        voice: Voice identifier (for future multi-voice support)
+    
+    Returns:
+        True if successful, False otherwise
+    
+    Example (from Clawdbot):
+        # Local Ganglia
+        push_response("Hello, I heard you!")
+        
+        # Remote Ganglia
+        push_response("Hello!", ssh_host="jason@ubuntu-beast.local")
+    """
+    import time
+    
+    response = {
+        "timestamp": time.time(),
+        "text": text,
+        "voice": voice,
+    }
+    response_json = json.dumps(response)
+    
+    if ssh_host:
+        # Write to remote Ganglia host
+        cmd = f"echo {shlex.quote(response_json)} >> ~/.clawdbot/ganglia-responses.jsonl"
+        try:
+            result = subprocess.run(
+                ["ssh", ssh_host, cmd],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                print(f"⚠️ Failed to push response via SSH: {result.stderr}")
+                return False
+            return True
+        except Exception as e:
+            print(f"⚠️ SSH error: {e}")
+            return False
+    else:
+        # Write locally
+        try:
+            RESPONSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(RESPONSE_FILE, "a") as f:
+                f.write(response_json + "\n")
+            return True
+        except Exception as e:
+            print(f"⚠️ Failed to write response: {e}")
+            return False

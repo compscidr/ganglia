@@ -114,33 +114,92 @@ python -m ganglia.main
 python -m ganglia.main --model tiny --output events.jsonl
 ```
 
-### Clawdbot Integration (Local)
+### Clawdbot Voice Integration
 
-Run Ganglia on the same machine as Clawdbot:
+Full duplex voice communication with a Clawdbot agent. You speak → agent hears → agent responds → you hear.
+
+#### Local Setup (Same Machine)
 
 ```bash
-python -m ganglia.main \
-  --clawdbot-reactive \
-  --clawdbot-channel discord \
-  --clawdbot-target "channel:YOUR_CHANNEL_ID"
+# Install TTS
+pip install piper-tts
+
+# Download voice model
+mkdir -p ~/.local/share/piper
+wget -O ~/.local/share/piper/en_US-lessac-medium.onnx \
+    "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+wget -O ~/.local/share/piper/en_US-lessac-medium.onnx.json \
+    "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+
+# Run full voice loop
+PYTHONPATH="$PWD" python ganglia_voice.py \
+    --channel discord \
+    --target "channel:YOUR_CHANNEL_ID"
 ```
 
-### Clawdbot Integration (Remote via SSH)
-
-Run Ganglia on a sensor machine (e.g., Ubuntu workstation) with Clawdbot on another machine (e.g., Mac):
+#### Remote Setup (Ganglia on Ubuntu, Clawdbot on Mac)
 
 ```bash
-# On the sensor machine
-python -m ganglia.main \
-  --clawdbot-reactive \
-  --clawdbot-channel discord \
-  --clawdbot-target "channel:YOUR_CHANNEL_ID" \
-  --ssh-host user@clawdbot-host.local
+# On the sensor machine (ubuntu-beast)
+# Install TTS
+pip install piper-tts
+
+# Download voice model (same as above)
+# ...
+
+# Install Whisper for transcription
+pip install openai-whisper
+
+# Run with SSH host pointing to Clawdbot machine
+PYTHONPATH="$PWD" python ganglia_voice.py \
+    --channel discord \
+    --target "channel:YOUR_CHANNEL_ID" \
+    --ssh-host user@macbook.local \
+    --speaker "YourName" \
+    --transcribe whisper-python
 ```
 
 **Requirements for remote setup:**
 - SSH key auth configured (no password prompts)
-- Clawdbot installed on the target host
+- Clawdbot installed and running on the Mac
+
+#### Listen Only (No TTS)
+
+```bash
+PYTHONPATH="$PWD" python ganglia_listener.py \
+    --channel discord \
+    --target "channel:YOUR_CHANNEL_ID" \
+    --ssh-host user@macbook.local \
+    --speaker "YourName"
+```
+
+#### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Your Voice                                                     │
+│      ↓                                                          │
+│  [Microphone] → [VAD] → [Whisper] → [Text]                     │
+│                                         ↓                       │
+│                                    [SSH to Mac]                 │
+│                                         ↓                       │
+│                               [Clawdbot Agent]                  │
+│                                         ↓                       │
+│                                  [Text Response]                │
+│                                         ↓                       │
+│                              [SSH back to Ubuntu]               │
+│                                         ↓                       │
+│  [Speaker] ← [Piper TTS] ← [Response File]                     │
+│      ↓                                                          │
+│  You Hear Response                                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Session Discovery
+
+The integration automatically discovers the Clawdbot session UUID by querying `clawdbot sessions list`. No manual configuration needed — just specify the channel and target.
+
+The session ID is cached in `~/.clawdbot/ganglia-session-id` and automatically refreshed if it becomes stale.
 
 ### Example Output
 
