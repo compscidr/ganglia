@@ -5,6 +5,7 @@ Vision description module - sends frames to vision model for description.
 import subprocess
 import json
 import time
+import shlex
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -66,35 +67,35 @@ def describe_frame_clawdbot(
         else:
             return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     
-    # Post image with prompt - will naturally appear in agent's session
-    # For remote, use the path on the Mac
-    media_path = "~/.clawdbot/ganglia-frame.jpg" if ssh_host else str(temp_path)
+    # Write trigger file so agent knows to look at the frame
+    # The agent will read ~/.clawdbot/ganglia-frame.jpg directly
+    trigger_data = json.dumps({
+        "timestamp": time.time(),
+        "prompt": prompt,
+        "width": frame.width,
+        "height": frame.height,
+    })
     
-    # Include prompt in message so agent sees it with the image
-    message = f"👁️ **[Vision]** {prompt}"
-    
-    post_cmd = [
-        "clawdbot", "message", "send",
-        "--channel", channel,
-        "--target", target,
-        "--message", message,
-        "--media", media_path,
-    ]
-    
-    try:
-        result = run_cmd(post_cmd, timeout=30)
-        if result.returncode != 0:
-            print(f"⚠️ Failed to post image: {result.stderr}")
+    if ssh_host:
+        # Write trigger to remote host
+        cmd = f"echo {shlex.quote(trigger_data)} > ~/.clawdbot/ganglia-vision-trigger"
+        try:
+            subprocess.run(["ssh", ssh_host, cmd], timeout=5, capture_output=True)
+        except Exception as e:
+            print(f"⚠️ Failed to write trigger: {e}")
             return None
-        
-        return VisionResult(
-            description="(sent to channel)",
-            timestamp=time.time(),
-            model="clawdbot"
-        )
-    except Exception as e:
-        print(f"⚠️ Vision error: {e}")
-        return None
+    else:
+        # Write locally
+        trigger_file = Path.home() / ".clawdbot" / "ganglia-vision-trigger"
+        trigger_file.write_text(trigger_data)
+    
+    print(f"📷 Frame ready at ~/.clawdbot/ganglia-frame.jpg")
+    
+    return VisionResult(
+        description="(frame ready for agent)",
+        timestamp=time.time(),
+        model="clawdbot"
+    )
 
 
 def emit_vision_event(

@@ -121,6 +121,7 @@ Examples:
         try:
             from ganglia.video.capture import capture_frame
             from ganglia.video.describe import describe_frame_clawdbot
+            from ganglia.integrations.clawdbot import ClawdbotIntegration
             
             print("📷 Capturing frame...")
             frame = capture_frame()
@@ -133,6 +134,27 @@ Examples:
                     target=args.target,
                     ssh_host=args.ssh_host,
                 )
+                
+                # Send voice trigger to agent - tell them to look at the frame
+                integration = ClawdbotIntegration(
+                    channel=args.channel,
+                    target=args.target,
+                    ssh_host=args.ssh_host,
+                    reactive=True,
+                )
+                from ganglia.events import Event, EventType
+                import time as time_module
+                event = Event(
+                    type=EventType.SPEECH,
+                    timestamp=time_module.time(),
+                    data={
+                        "text": "[Vision] I just captured a camera frame. Please read ~/.clawdbot/ganglia-frame.jpg and describe what you see, then respond via TTS.",
+                        "duration": 0,
+                        "language": "en",
+                    }
+                )
+                integration.handle_event(event)
+                print("📷 Triggered agent to analyze frame")
             else:
                 print("⚠️ Failed to capture frame")
         except Exception as e:
