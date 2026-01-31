@@ -62,6 +62,10 @@ Examples:
     parser.add_argument("--no-tts", action="store_true",
                         help="Disable TTS response handler (listen only)")
     
+    # Face visualization
+    parser.add_argument("--face", action="store_true",
+                        help="Show ocean wave face visualization")
+    
     # Transcription options
     parser.add_argument("--transcribe", default="whisper-cli",
                         choices=["whisper-cli", "whisper-python", "shell"],
@@ -104,6 +108,19 @@ Examples:
             print(f"⚠️ Could not start TTS handler: {e}")
             print("   Continuing without TTS (listen only)")
             speaking_event = None  # No echo suppression needed
+    
+    # Start face visualization if requested
+    face_thread = None
+    if args.face:
+        try:
+            from ganglia.face.ocean import OceanFace
+            face = OceanFace()
+            face_thread = threading.Thread(target=face.run, daemon=True)
+            face_thread.start()
+            print("🌊 Face visualization started")
+        except Exception as e:
+            print(f"⚠️ Could not start face: {e}")
+            print("   (Try: pip install pygame)")
     
     # Handle Ctrl+C gracefully
     def signal_handler(sig, frame):
