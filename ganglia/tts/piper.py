@@ -126,7 +126,7 @@ class PiperTTS(TTSEngine):
             wav_file.setframerate(voice.config.sample_rate)
             # synthesize returns chunks - write each one
             for audio_chunk in voice.synthesize(text):
-                wav_file.writeframes(audio_chunk.audio_bytes)
+                wav_file.writeframes(audio_chunk.audio_int16_bytes)
         
         return output_path
     
