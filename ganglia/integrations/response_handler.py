@@ -138,14 +138,22 @@ class ResponseHandler:
         if self.on_response:
             self.on_response(response)
         
+        # Speaking indicator files (for face visualization)
+        speaking_file = self.response_file.parent / "ganglia-speaking"
+        level_file = self.response_file.parent / "ganglia-audio-level"
+        
         # Speak the response (set speaking event to mute mic)
         try:
             self.speaking_event.set()  # Signal: TTS is speaking
+            speaking_file.touch()      # Signal for face visualization
+            level_file.write_text("0.8")  # Set audio level for face
             self.tts.speak(response.text)
         except Exception as e:
             print(f"⚠️ TTS failed: {e}")
         finally:
             self.speaking_event.clear()  # Signal: TTS done
+            speaking_file.unlink(missing_ok=True)  # Clear speaking flag
+            level_file.write_text("0.0")
         
         # Update last read timestamp
         self._last_read_timestamp = response.timestamp
