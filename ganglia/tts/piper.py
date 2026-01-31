@@ -120,6 +120,10 @@ class PiperTTS(TTSEngine):
         voice = PiperVoice.load(self.model)
         
         with wave.open(str(output_path), "wb") as wav_file:
+            # Must set up wave params before piper writes to it
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(voice.config.sample_rate)
             voice.synthesize(text, wav_file, speaker_id=self.speaker)
         
         return output_path
